@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Calendar, Filter, ExternalLink, Clock, ArrowDownUp, Code, AlertTriangle, Download, Copy, Check } from 'lucide-react';
 import Web3Service from '../services/web3Service';
 import { Transaction } from '../types/transaction';
+import AddressLabel from './AddressLabel';
 
 interface AddressTransactionHistoryProps {
   address: string;
@@ -89,15 +90,14 @@ const AddressTransactionHistory: React.FC<AddressTransactionHistoryProps> = ({
   };
   
   const getExplorerUrl = (chain: string, hash: string, isAddress: boolean = false) => {
-    const baseUrl = {
-      ethereum: 'https://etherscan.io',
-      bsc: 'https://bscscan.com',
-      polygon: 'https://polygonscan.com',
-      arbitrum: 'https://arbiscan.io',
-      optimism: 'https://optimistic.etherscan.io'
-    }[chain] || 'https://etherscan.io';
-    
-    return `${baseUrl}/${isAddress ? 'address' : 'tx'}/${hash}`;
+    // Instead of using external explorers, use ChainHound's own pages
+    if (isAddress) {
+      return `/?address=${hash}`;
+    } else {
+      // For transactions, we could create a transaction detail page in the future
+      // For now, just link to the address history
+      return `/?address=${hash}`;
+    }
   };
   
   const getCurrencySymbol = (chain: string) => {
@@ -211,7 +211,7 @@ const AddressTransactionHistory: React.FC<AddressTransactionHistoryProps> = ({
       <div className="p-4 border-b border-gray-700">
         <div className="flex justify-between items-center">
           <h2 className="text-xl font-semibold text-white">
-            Transaction History for {shortenAddress(address)}
+            Transaction History for <AddressLabel address={address} showEdit={false} />
           </h2>
           <div className="relative group">
             <button 
@@ -288,7 +288,7 @@ const AddressTransactionHistory: React.FC<AddressTransactionHistoryProps> = ({
             </select>
           </div>
           
-          <div> <div>
+          <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">
               <Filter className="h-4 w-4 inline mr-1" />
               Blockchain
@@ -379,8 +379,6 @@ const AddressTransactionHistory: React.FC<AddressTransactionHistoryProps> = ({
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-400">
                       <a 
                         href={getExplorerUrl(tx.blockchain, tx.hash)} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
                         className="flex items-center gap-1 hover:underline"
                       >
                         {shortenHash(tx.hash)}
@@ -393,21 +391,17 @@ const AddressTransactionHistory: React.FC<AddressTransactionHistoryProps> = ({
                     <td className={`px-6 py-4 whitespace-nowrap text-sm ${direction === 'outgoing' ? 'font-semibold text-red-400' : 'text-gray-400'}`}>
                       <a 
                         href={getExplorerUrl(tx.blockchain, tx.from, true)} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
                         className="hover:underline"
                       >
-                        {shortenAddress(tx.from)}
+                        <AddressLabel address={tx.from} showEdit={false} />
                       </a>
                     </td>
                     <td className={`px-6 py-4 whitespace-nowrap text-sm ${direction === 'incoming' ? 'font-semibold text-green-400' : 'text-gray-400'}`}>
                       <a 
                         href={getExplorerUrl(tx.blockchain, tx.to, true)} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
                         className="hover:underline"
                       >
-                        {shortenAddress(tx.to)}
+                        <AddressLabel address={tx.to} showEdit={false} />
                       </a>
                     </td>
                     <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${

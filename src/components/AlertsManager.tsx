@@ -11,11 +11,13 @@ import {
   Clock, 
   ToggleLeft, 
   ToggleRight,
-  ExternalLink
+  ExternalLink,
+  Flag
 } from 'lucide-react';
 import { useAlerts } from '../hooks/useAlerts';
 import { Alert, AlertConditionType, AlertFrequency } from '../types/alert';
 import { useStorage } from '../hooks/useStorage';
+import { getCountryFlag } from '../utils/countryFlags';
 
 interface AlertsManagerProps {
   address: string;
@@ -49,6 +51,8 @@ const AlertsManager: React.FC<AlertsManagerProps> = ({
   const [smtpUsername, setSmtpUsername] = useState<string>('');
   const [smtpPassword, setSmtpPassword] = useState<string>('');
   const [showSmtpSettings, setShowSmtpSettings] = useState<boolean>(false);
+  const [threatTag, setThreatTag] = useState<string>('');
+  const [countryTag, setCountryTag] = useState<string>('');
   
   // New alert form state
   const [newAlert, setNewAlert] = useState<{
@@ -61,6 +65,8 @@ const AlertsManager: React.FC<AlertsManagerProps> = ({
     frequency: AlertFrequency;
     notifyInApp: boolean;
     notifyEmail: boolean;
+    threatTag: string;
+    countryTag: string;
   }>({
     name: '',
     description: '',
@@ -70,7 +76,9 @@ const AlertsManager: React.FC<AlertsManagerProps> = ({
     contractAddress: '',
     frequency: 'always',
     notifyInApp: true,
-    notifyEmail: false
+    notifyEmail: false,
+    threatTag: '',
+    countryTag: ''
   });
   
   useEffect(() => {
@@ -133,6 +141,15 @@ const AlertsManager: React.FC<AlertsManagerProps> = ({
         break;
     }
     
+    // Add threat and country tags if provided
+    if (newAlert.threatTag) {
+      parameters.threatTag = newAlert.threatTag;
+    }
+    
+    if (newAlert.countryTag) {
+      parameters.countryTag = newAlert.countryTag;
+    }
+    
     // Create the alert
     addAlert({
       name: newAlert.name,
@@ -147,7 +164,9 @@ const AlertsManager: React.FC<AlertsManagerProps> = ({
         inApp: newAlert.notifyInApp,
         email: newAlert.notifyEmail
       },
-      emailAddress: newAlert.notifyEmail ? emailAddress : undefined
+      emailAddress: newAlert.notifyEmail ? emailAddress : undefined,
+      threatTag: newAlert.threatTag || undefined,
+      countryTag: newAlert.countryTag || undefined
     });
     
     // Reset form and close modal
@@ -160,7 +179,9 @@ const AlertsManager: React.FC<AlertsManagerProps> = ({
       contractAddress: '',
       frequency: 'always',
       notifyInApp: true,
-      notifyEmail: false
+      notifyEmail: false,
+      threatTag: '',
+      countryTag: ''
     });
     
     setShowCreateAlert(false);
@@ -288,6 +309,17 @@ const AlertsManager: React.FC<AlertsManagerProps> = ({
                         >
                           {alert.enabled ? 'Active' : 'Disabled'}
                         </div>
+                        {alert.threatTag && (
+                          <div className="px-2 py-0.5 text-xs rounded-full bg-red-900/50 text-red-400">
+                            {alert.threatTag}
+                          </div>
+                        )}
+                        {alert.countryTag && (
+                          <div className="px-2 py-0.5 text-xs rounded-full bg-blue-900/50 text-blue-400 flex items-center gap-1">
+                            <span>{getCountryFlag(alert.countryTag)}</span>
+                            <span>{alert.countryTag}</span>
+                          </div>
+                        )}
                       </div>
                       <p className="text-sm text-gray-400 mt-1">{alert.description}</p>
                     </div>
@@ -421,9 +453,7 @@ const AlertsManager: React.FC<AlertsManagerProps> = ({
                         
                         {notification.transactionHash && (
                           <a
-                            href={`https://etherscan.io/tx/${notification.transactionHash}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                            href={`/?address=${notification.transactionHash}`}
                             className="ml-3 flex items-center text-red-400 hover:text-red-300"
                           >
                             <span>{shortenHash(notification.transactionHash)}</span>
@@ -676,6 +706,57 @@ const AlertsManager: React.FC<AlertsManagerProps> = ({
                   )}
                 </div>
               )}
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">
+                  <Flag className="h-4 w-4 inline mr-1" />
+                  Threat Tag (Optional)
+                </label>
+                <select
+                  value={newAlert.threatTag}
+                  onChange={(e) => setNewAlert({...newAlert, threatTag: e.target.value})}
+                  className="w-full rounded-md border border-gray-600 bg-gray-700 shadow-sm px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-red-500 focus:border-red-500"
+                >
+                  <option value="">No threat tag</option>
+                  <option value="phishing">Phishing</option>
+                  <option value="rugpull">Rug Pull</option>
+                  <option value="scam">Scam</option>
+                  <option value="hack">Hack</option>
+                  <option value="money-laundering">Money Laundering</option>
+                  <option value="ransomware">Ransomware</option>
+                  <option value="darkweb">Dark Web</option>
+                  <option value="sanctioned">Sanctioned</option>
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">
+                  <Flag className="h-4 w-4 inline mr-1" />
+                  Country Tag (Optional)
+                </label>
+                <select
+                  value={newAlert.countryTag}
+                  onChange={(e) => setNewAlert({...newAlert, countryTag: e.target.value})}
+                  className="w-full rounded-md border border-gray-600 bg-gray-700 shadow-sm px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-red-500 focus:border-red-500"
+                >
+                  <option value="">No country tag</option>
+                  <option value="US">🇺🇸 USA</option>
+                  <option value="CN">🇨🇳 China</option>
+                  <option value="RU">🇷🇺 Russia</option>
+                  <option value="KP">🇰🇵 North Korea</option>
+                  <option value="IR">🇮🇷 Iran</option>
+                  <option value="GB">🇬🇧 UK</option>
+                  <option value="JP">🇯🇵 Japan</option>
+                  <option value="DE">🇩🇪 Germany</option>
+                  <option value="FR">🇫🇷 France</option>
+                  <option value="CA">🇨🇦 Canada</option>
+                  <option value="AU">🇦🇺 Australia</option>
+                  <option value="IN">🇮🇳 India</option>
+                  <option value="BR">🇧🇷 Brazil</option>
+                  <option value="SG">🇸🇬 Singapore</option>
+                  <option value="CH">🇨🇭 Switzerland</option>
+                </select>
+              </div>
             </div>
             
             <div className="mt-6 flex justify-end gap-3">

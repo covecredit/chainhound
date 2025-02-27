@@ -85,6 +85,73 @@ const ThreatManager: React.FC = () => {
       ]
     },
     {
+      id: 'extension-hijacking',
+      name: 'Extension Browser Hijacking',
+      category: 'technical',
+      severity: 'high',
+      description: 'Malicious browser extensions can modify blockchain transactions, steal private keys, or inject malicious code into cryptocurrency websites. These extensions often masquerade as wallet helpers, trading tools, or security enhancements.',
+      indicators: [
+        'Unexpected changes to transaction details',
+        'Transactions being sent to different addresses than intended',
+        'Extensions requesting excessive permissions',
+        'Recently installed extensions coinciding with suspicious activity',
+        'Extensions with few users or reviews'
+      ],
+      mitigations: [
+        'Only install extensions from official web stores',
+        'Verify extension reviews and developer reputation',
+        'Use a separate browser profile for cryptocurrency activities',
+        'Regularly audit installed extensions and remove unused ones',
+        'Consider using a hardware wallet for transaction signing'
+      ],
+      examples: [
+        'MetaMask impersonator extensions that steal private keys',
+        'Trading extensions that modify transaction recipients',
+        'Wallet "helpers" that inject malicious scripts into DeFi websites'
+      ]
+    },
+    {
+      id: 'csrf',
+      name: 'Cross-Site Request Forgery (CSRF)',
+      category: 'technical',
+      severity: 'high',
+      description: 'CSRF attacks trick users who are authenticated to a web3 application into executing unwanted actions. For example, an attacker might create a malicious website that, when visited by a victim, triggers unauthorized transactions or approvals in a connected wallet or dApp.',
+      indicators: [
+        'Unexpected transactions or approvals after visiting websites',
+        'Suspicious links in emails or messages related to cryptocurrency',
+        'Websites requesting to connect to your wallet without clear purpose',
+        'Transactions occurring without explicit confirmation'
+      ],
+      mitigations: [
+        'Always verify transaction details before confirming',
+        'Disconnect wallets from dApps when not in use',
+        'Use browser extensions that prevent CSRF attacks',
+        'Be cautious of links in emails or messages',
+        'Consider using a hardware wallet for additional security'
+      ]
+    },
+    {
+      id: 'xss',
+      name: 'Cross-Site Scripting (XSS)',
+      category: 'technical',
+      severity: 'high',
+      description: 'XSS attacks involve injecting malicious scripts into trusted websites. In the context of cryptocurrency, these scripts can steal private keys, modify transaction details, or trick users into approving malicious transactions.',
+      indicators: [
+        'Unusual behavior on cryptocurrency websites',
+        'Unexpected wallet connection requests',
+        'Transaction details changing after submission',
+        'Redirects to suspicious websites',
+        'JavaScript errors in the browser console'
+      ],
+      mitigations: [
+        'Keep browsers and extensions updated',
+        'Use content security policies and script blockers',
+        'Verify transaction details on hardware wallets when possible',
+        'Be cautious of websites with user-generated content',
+        'Consider using a separate browser profile for cryptocurrency activities'
+      ]
+    },
+    {
       id: 'fake-tokens',
       name: 'Fake Token Scams',
       category: 'technical',
@@ -392,18 +459,6 @@ const ThreatManager: React.FC = () => {
                         </div>
                       </div>
                     )}
-                    
-                    <div className="mt-4 flex justify-end">
-                      <a 
-                        href={`https://www.google.com/search?q=blockchain+${threat.name.replace(/\s+/g, '+')}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1"
-                      >
-                        Learn more
-                        <ExternalLink className="h-3 w-3" />
-                      </a>
-                    </div>
                   </div>
                 )}
               </div>

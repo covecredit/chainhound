@@ -1,15 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { Tag, Trash2, Plus, Search, AlertTriangle } from 'lucide-react';
+import { Tag, Trash2, Plus, Search, AlertTriangle, Flag } from 'lucide-react';
 import { AddressLabelService } from '../services/addressLabelService';
 import { AddressInfo } from '../types/address';
 import AddressLabel from './AddressLabel';
+import { getCountryFlag, getCountryName } from '../utils/countryFlags';
 
 const AddressLabelManager: React.FC = () => {
   const [addressLabels, setAddressLabels] = useState<AddressInfo[]>([]);
   const [newAddress, setNewAddress] = useState<string>('');
   const [newLabel, setNewLabel] = useState<string>('');
+  const [newCountry, setNewCountry] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
+  const [countryFilter, setCountryFilter] = useState<string>('all');
   
   const labelService = new AddressLabelService();
   
@@ -34,9 +37,10 @@ const AddressLabelManager: React.FC = () => {
     }
     
     try {
-      await labelService.setAddressLabel(newAddress, newLabel);
+      await labelService.setAddressLabel(newAddress, newLabel, newCountry || undefined);
       setNewAddress('');
       setNewLabel('');
+      setNewCountry('');
       setError(null);
       loadAddressLabels();
     } catch (err) {
@@ -50,9 +54,13 @@ const AddressLabelManager: React.FC = () => {
   };
   
   const filteredLabels = addressLabels.filter(item => 
-    item.address.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    (item.label && item.label.toLowerCase().includes(searchTerm.toLowerCase()))
+    (item.address.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    (item.label && item.label.toLowerCase().includes(searchTerm.toLowerCase()))) &&
+    (countryFilter === 'all' || (item.country === countryFilter))
   );
+  
+  // Get unique countries from address labels
+  const countries = Array.from(new Set(addressLabels.filter(item => item.country).map(item => item.country as string)));
   
   return (
     <div className="bg-gray-800 rounded-lg shadow-lg overflow-hidden border border-gray-700">
@@ -88,6 +96,30 @@ const AddressLabelManager: React.FC = () => {
                   className="w-full rounded-md border border-gray-600 bg-gray-700 shadow-sm px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-red-500 focus:border-red-500"
                 />
               </div>
+              <div className="flex-grow">
+                <select
+                  value={newCountry}
+                  onChange={(e) => setNewCountry(e.target.value)}
+                  className="w-full rounded-md border border-gray-600 bg-gray-700 shadow-sm px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-red-500 focus:border-red-500"
+                >
+                  <option value="">No country</option>
+                  <option value="US">🇺🇸 USA</option>
+                  <option value="CN">🇨🇳 China</option>
+                  <option value="RU">🇷🇺 Russia</option>
+                  <option value="KP">🇰🇵 North Korea</option>
+                  <option value="IR">🇮🇷 Iran</option>
+                  <option value="GB">🇬🇧 UK</option>
+                  <option value="JP">🇯🇵 Japan</option>
+                  <option value="DE">🇩🇪 Germany</option>
+                  <option value="FR">🇫🇷 France</option>
+                  <option value="CA">🇨🇦 Canada</option>
+                  <option value="AU">🇦🇺 Australia</option>
+                  <option value="IN">🇮🇳 India</option>
+                  <option value="BR">🇧🇷 Brazil</option>
+                  <option value="SG">🇸🇬 Singapore</option>
+                  <option value="CH">🇨🇭 Switzerland</option>
+                </select>
+              </div>
               <div>
                 <button
                   onClick={addNewLabel}
@@ -107,7 +139,7 @@ const AddressLabelManager: React.FC = () => {
             )}
           </div>
           
-          <div className="md:col-span-3 mt-2">
+          <div className="md:col-span-2 mt-2">
             <div className="relative">
               <input
                 type="text"
@@ -120,6 +152,21 @@ const AddressLabelManager: React.FC = () => {
                 <Search className="h-4 w-4 text-gray-500" />
               </div>
             </div>
+          </div>
+          
+          <div className="md:col-span-1 mt-2">
+            <select
+              value={countryFilter}
+              onChange={(e) => setCountryFilter(e.target.value)}
+              className="w-full rounded-md border border-gray-600 bg-gray-700 shadow-sm px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-red-500 focus:border-red-500"
+            >
+              <option value="all">All Countries</option>
+              {countries.map(code => (
+                <option key={code} value={code}>
+                  {getCountryFlag(code)} {getCountryName(code)}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
       </div>
@@ -135,6 +182,9 @@ const AddressLabelManager: React.FC = () => {
                 Label
               </th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                Country
+              </th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                 Type
               </th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
@@ -145,7 +195,7 @@ const AddressLabelManager: React.FC = () => {
           <tbody className="bg-gray-800 divide-y divide-gray-700">
             {filteredLabels.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-6 py-4 text-center text-sm text-gray-400">
+                <td colSpan={5} className="px-6 py-4 text-center text-sm text-gray-400">
                   {searchTerm ? 'No matching addresses found' : 'No labeled addresses yet'}
                 </td>
               </tr>
@@ -164,6 +214,16 @@ const AddressLabelManager: React.FC = () => {
                     >
                       {item.label}
                     </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
+                    {item.country ? (
+                      <span className="flex items-center gap-1">
+                        <span className="text-lg">{getCountryFlag(item.country)}</span>
+                        <span>{getCountryName(item.country)}</span>
+                      </span>
+                    ) : (
+                      <span className="text-gray-500">-</span>
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400 capitalize">
                     {item.type}

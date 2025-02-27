@@ -27,8 +27,6 @@ import {
   Trash2,
   Network,
   Key,
-  Twitter,
-  Linkedin,
   Code,
   Folder,
   FileText,
@@ -58,6 +56,8 @@ function App() {
   
   const fetchTransactions = async (): Promise<Transaction[]> => {
     try {
+      setLoading(true);
+      setError(null);
       const transactions = await web3Service.getLatestTransactions(transactionCount, blockchain);
       // Check for alerts when new transactions are fetched
       checkForAlerts(transactions);
@@ -137,7 +137,6 @@ function App() {
 
   const handleCloseDonationBanner = () => {
     setShowDonationBanner(false);
-    setInStorage('donation-banner-closed', true);
   };
 
   // Output the Lord's Prayer to console when the component mounts
@@ -417,6 +416,21 @@ function App() {
         )}
 
         <div className="mb-6">
+          <div className="bg-gray-800 border-l-4 border-blue-500 p-4 rounded-md">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <ArrowRight className="h-5 w-5 text-blue-500" />
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-gray-300">
+                  Track suspicious blockchain activity with our forensic tools. Identify illicit transactions, monitor addresses, and analyze contract behavior across multiple blockchains.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mb-6">
           <div className="flex flex-col gap-4">
             <div className="w-full">
               <div className="relative">
@@ -481,7 +495,7 @@ function App() {
                     : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                 }`}
               >
-                Behavior
+                Threat Analysis
               </button>
               <button
                 onClick={() => setActiveTab('decompiler')}
@@ -630,39 +644,8 @@ function App() {
             <p className="text-center text-gray-400 text-sm">
               ChainHound &copy; {new Date().getFullYear()} - Blockchain Forensics Explorer
             </p>
-            <div className="bg-gray-800 rounded-lg p-4 border border-gray-700 mb-4 md:mb-0 w-full md:w-auto">
-              <p className="text-sm text-gray-300">
-                Track suspicious blockchain activity with our forensic tools. Identify illicit transactions, monitor addresses, and analyze contract behavior across multiple blockchains.
-              </p>
-            </div>
             <div className="flex flex-col sm:flex-row items-center gap-4">
               <div className="flex items-center gap-2">
-                <a
-                  href="https://twitter.com/hackerfantastic"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-gray-400 hover:text-gray-300"
-                  title="Twitter - @hackerfantastic"
-                >
-                  <Twitter className="h-4 w-4" />
-                </a>
-                <a
-                  href="https://twitter.com/jennifer_arcuri"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-gray-400 hover:text-gray-300"
-                  title="Twitter - @jennifer_arcuri"
-                >
-                  <Twitter className="h-4 w-4" />
-                </a>
-                <a
-                  href="https://www.linkedin.com/in/hackerfantastic/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-gray-400 hover:text-gray-300"
-                >
-                  <Linkedin className="h-4 w-4" />
-                </a>
                 <a
                   href="https://github.com/covecredit/chainhound"
                   target="_blank"

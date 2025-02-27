@@ -89,9 +89,9 @@ const BlockchainTransactionVisualizer: React.FC<BlockchainTransactionVisualizerP
       const txs = await onFetchTransactions();
       setTransactions(txs);
       processTransactions(txs);
-    } catch (err) {
+    } catch (error) {
       setError('Failed to fetch transactions. Please try again.');
-      console.error(err);
+      console.error(error);
     } finally {
       setLoading(false);
     }
@@ -173,7 +173,7 @@ const BlockchainTransactionVisualizer: React.FC<BlockchainTransactionVisualizerP
       .attr('fill', '#ef4444')
       .attr('d', 'M0,-5L10,0L0,5');
 
-    // Create links
+    // Create links with different colors based on blockchain
     const link = g.append('g')
       .selectAll('line')
       .data(links)
@@ -206,8 +206,7 @@ const BlockchainTransactionVisualizer: React.FC<BlockchainTransactionVisualizerP
       .on('click', (event, d: any) => {
         setSelectedNode(d);
         if (onAddressSelect) {
-          // Open in a new tab to preserve current view
-          window.open(`?address=${d.address}`, '_blank');
+          onAddressSelect(d.address);
         }
       });
 
@@ -329,8 +328,7 @@ const BlockchainTransactionVisualizer: React.FC<BlockchainTransactionVisualizerP
   const handleNodeClick = (address: Address) => {
     setSelectedNode(selectedNode?.id === address.id ? null : address);
     if (onAddressSelect) {
-      // Open in a new tab to preserve current view
-      window.open(`?address=${address.address}`, '_blank');
+      onAddressSelect(address.address);
     }
   };
 

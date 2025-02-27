@@ -20,6 +20,12 @@ export function useStorage() {
           localStorage.setItem(key, JSON.stringify({}));
         }
       });
+      
+      // Reset donation banner closed state when data is cleared
+      if (localStorage.getItem('donation-banner-closed') === null) {
+        localStorage.setItem('donation-banner-closed', 'false');
+      }
+      
       setIsInitialized(true);
     };
 
@@ -52,6 +58,9 @@ export function useStorage() {
       Object.values(STORAGE_KEYS).forEach(key => {
         localStorage.removeItem(key);
       });
+      
+      // Reset donation banner when data is cleared
+      localStorage.setItem('donation-banner-closed', 'false');
     } catch (error) {
       console.error('Error clearing storage:', error);
     }
@@ -102,6 +111,9 @@ export function useStorage() {
           localStorage.setItem(key, JSON.stringify(value));
         }
       });
+      
+      // Reset donation banner when data is imported
+      localStorage.setItem('donation-banner-closed', 'false');
       
       return true;
     } catch (error) {

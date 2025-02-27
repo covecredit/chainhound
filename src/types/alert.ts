@@ -14,6 +14,8 @@ export interface AlertCondition {
     threshold?: string;
     eventName?: string;
     contractAddress?: string;
+    threatTag?: string;
+    countryTag?: string;
   };
 }
 
@@ -31,6 +33,8 @@ export interface Alert {
     email: boolean;
   };
   emailAddress?: string;
+  threatTag?: string;
+  countryTag?: string;
 }
 
 export interface AlertNotification {
@@ -42,4 +46,6 @@ export interface AlertNotification {
   read: boolean;
   transactionHash?: string;
   details?: any;
+  threatTag?: string;
+  countryTag?: string;
 }

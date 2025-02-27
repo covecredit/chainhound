@@ -117,7 +117,9 @@ export function useAlerts() {
       timestamp: Date.now(),
       read: false,
       transactionHash: details?.hash,
-      details
+      details,
+      threatTag: alert.threatTag,
+      countryTag: alert.countryTag
     };
     
     const updatedNotifications = [notification, ...notifications];
@@ -241,6 +243,7 @@ export function useAlerts() {
         // In a real app, you'd check against a database of suspicious addresses
         const suspiciousAddresses = [
           '0xfa09c3a328792253f8dee7116848723b72a6d2ea',
+          '0x0fa09c3a328792253f8dee7116848723b72a6d2e', // Bybit hacker address
           '0xdfd5293d8e347dfe59e90efd55b2956a1343963d',
           '0x21a31ee1afc51d94c2efccaa2092ad1028285549'
         ];

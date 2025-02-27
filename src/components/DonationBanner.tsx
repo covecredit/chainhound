@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Heart, Copy, Check, X } from 'lucide-react';
+import { useStorage } from '../hooks/useStorage';
 
 interface DonationBannerProps {
   address: string;
@@ -8,11 +9,18 @@ interface DonationBannerProps {
 
 const DonationBanner: React.FC<DonationBannerProps> = ({ address, onClose }) => {
   const [copied, setCopied] = useState<boolean>(false);
+  const { setInStorage } = useStorage();
   
   const copyToClipboard = () => {
     navigator.clipboard.writeText(address);
     setCopied(true);
     setTimeout(() => setCopied(false), 3000);
+  };
+  
+  const handleClose = () => {
+    // Only set the banner as closed for this session
+    setInStorage('donation-banner-closed', true);
+    onClose();
   };
   
   return (
@@ -30,7 +38,7 @@ const DonationBanner: React.FC<DonationBannerProps> = ({ address, onClose }) => 
           </div>
         </div>
         <button
-          onClick={onClose}
+          onClick={handleClose}
           className="text-yellow-400 hover:text-yellow-300"
           aria-label="Dismiss"
         >

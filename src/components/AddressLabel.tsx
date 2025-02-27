@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Tag, Edit, Check, X, ExternalLink } from 'lucide-react';
+import { Tag, Edit, Check, X, ExternalLink, Flag } from 'lucide-react';
 import { AddressLabelService } from '../services/addressLabelService';
+import { getCountryFlag } from '../utils/countryFlags';
 
 interface AddressLabelProps {
   address: string;
@@ -15,6 +16,8 @@ const AddressLabel: React.FC<AddressLabelProps> = ({
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [editValue, setEditValue] = useState<string>('');
   const [labelType, setLabelType] = useState<'known' | 'suspicious' | 'custom' | 'none'>('none');
+  const [country, setCountry] = useState<string | undefined>(undefined);
+  const [editCountry, setEditCountry] = useState<string>('');
   
   const labelService = new AddressLabelService();
   
@@ -26,11 +29,13 @@ const AddressLabel: React.FC<AddressLabelProps> = ({
     const addressInfo = await labelService.getAddressLabel(address);
     setLabel(addressInfo.label);
     setLabelType(addressInfo.type);
+    setCountry(addressInfo.country);
   };
   
   const startEditing = () => {
     setIsEditing(true);
     setEditValue(label || '');
+    setEditCountry(country || '');
   };
   
   const cancelEditing = () => {
@@ -38,9 +43,10 @@ const AddressLabel: React.FC<AddressLabelProps> = ({
   };
   
   const saveLabel = async () => {
-    await labelService.setAddressLabel(address, editValue);
+    await labelService.setAddressLabel(address, editValue, editCountry || undefined);
     setLabel(editValue);
     setLabelType('custom');
+    setCountry(editCountry || undefined);
     setIsEditing(false);
   };
   
@@ -73,6 +79,28 @@ const AddressLabel: React.FC<AddressLabelProps> = ({
             placeholder="Enter label"
             autoFocus
           />
+          <select
+            value={editCountry}
+            onChange={(e) => setEditCountry(e.target.value)}
+            className="px-2 py-1 text-xs border border-gray-600 bg-gray-700 rounded-md text-gray-200 focus:outline-none focus:ring-1 focus:ring-red-500"
+          >
+            <option value="">No country</option>
+            <option value="US">🇺🇸 USA</option>
+            <option value="CN">🇨🇳 China</option>
+            <option value="RU">🇷🇺 Russia</option>
+            <option value="KP">🇰🇵 North Korea</option>
+            <option value="IR">🇮🇷 Iran</option>
+            <option value="GB">🇬🇧 UK</option>
+            <option value="JP">🇯🇵 Japan</option>
+            <option value="DE">🇩🇪 Germany</option>
+            <option value="FR">🇫🇷 France</option>
+            <option value="CA">🇨🇦 Canada</option>
+            <option value="AU">🇦🇺 Australia</option>
+            <option value="IN">🇮🇳 India</option>
+            <option value="BR">🇧🇷 Brazil</option>
+            <option value="SG">🇸🇬 Singapore</option>
+            <option value="CH">🇨🇭 Switzerland</option>
+          </select>
           <button 
             onClick={saveLabel}
             className="p-1 text-green-400 hover:bg-green-900/30 rounded-full"
@@ -88,14 +116,16 @@ const AddressLabel: React.FC<AddressLabelProps> = ({
         </div>
       ) : (
         <>
-          <a 
-            href={`https://etherscan.io/address/${address}`} 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="hover:underline text-gray-300 mr-1"
-          >
+          {/* Fix: Don't use nested anchor tags */}
+          <span className="hover:underline text-gray-300 mr-1">
             {shortenAddress(address)}
-          </a>
+          </span>
+          
+          {country && (
+            <span className="mr-1" title={`Country: ${country}`}>
+              {getCountryFlag(country)}
+            </span>
+          )}
           
           {label && (
             <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getLabelColor()} ml-1`}>

@@ -26,7 +26,8 @@
     "html2canvas": "^1.4.1",
     "chart.js": "^4.4.1",
     "react-chartjs-2": "^5.2.0",
-    "jszip": "^3.10.1"
+    "jszip": "^3.10.1",
+    "country-flag-icons": "^1.5.9"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.1",
