@@ -250,7 +250,7 @@ const AddressTransactionHistory: React.FC<AddressTransactionHistoryProps> = ({
       
       <div className="p-4 border-b border-gray-700 bg-gray-900">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div>
+          <div className="md:col-span-2 lg:col-span-1">
             <label className="block text-sm font-medium text-gray-300 mb-1">
               <Calendar className="h-4 w-4 inline mr-1" />
               Date Range
@@ -288,7 +288,7 @@ const AddressTransactionHistory: React.FC<AddressTransactionHistoryProps> = ({
             </select>
           </div>
           
-          <div>
+          <div> <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">
               <Filter className="h-4 w-4 inline mr-1" />
               Blockchain

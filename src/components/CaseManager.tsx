@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Folder, 
   FolderPlus, 
@@ -46,6 +46,34 @@ const CaseManager: React.FC = () => {
   const [newTag, setNewTag] = useState<string>('');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Create ByBit case if none exists
+  useEffect(() => {
+    const bybitCaseExists = cases.some(c => c.name === "ByBit Hacker");
+    if (!bybitCaseExists && cases.length === 0) {
+      createBybitCase();
+    }
+  }, [cases]);
+  
+  const createBybitCase = () => {
+    const bybitCase = createCase("ByBit Hacker", "Investigation into the ByBit hack and tracking of stolen funds");
+    
+    // Add relevant addresses
+    addAddress("0x0fa09c3a328792253f8dee7116848723b72a6d2e");
+    addAddress("0xfa09c3a328792253f8dee7116848723b72a6d2ea");
+    
+    // Add relevant contracts
+    addContract("0xbdd077f651ebe7f7b3ce16fe5f2b025be2969516");
+    addContract("0x96221423681a6d52e184d440a8efcebb105c7242");
+    
+    // Add tags
+    addTag("hack");
+    addTag("theft");
+    addTag("cross-chain");
+    addTag("high-priority");
+    
+    return bybitCase;
+  };
   
   const handleCreateCase = () => {
     if (!newCaseName.trim()) return;
@@ -132,6 +160,19 @@ const CaseManager: React.FC = () => {
   const shortenAddress = (addr: string) => {
     return `${addr.substring(0, 8)}...${addr.substring(addr.length - 6)}`;
   };
+
+  const handleLoadBybitCase = () => {
+    // Check if ByBit case already exists
+    const bybitCase = cases.find(c => c.name === "ByBit Hacker");
+    
+    if (bybitCase) {
+      // If it exists, set it as active
+      setActive(bybitCase.id);
+    } else {
+      // If not, create it
+      createBybitCase();
+    }
+  };
   
   return (
     <div className="bg-gray-800 rounded-lg shadow-lg overflow-hidden border border-gray-700">
@@ -167,12 +208,20 @@ const CaseManager: React.FC = () => {
         <div className="p-8 text-center">
           <Folder className="h-12 w-12 text-gray-600 mx-auto mb-3" />
           <p className="text-gray-400">No cases created yet</p>
-          <button
-            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-            onClick={() => setShowCreateCase(true)}
-          >
-            Create Your First Case
-          </button>
+          <div className="mt-4 flex flex-col sm:flex-row gap-2 justify-center">
+            <button
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              onClick={() => setShowCreateCase(true)}
+            >
+              Create Your First Case
+            </button>
+            <button
+              className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+              onClick={handleLoadBybitCase}
+            >
+              Load ByBit Case
+            </button>
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

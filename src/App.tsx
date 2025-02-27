@@ -32,7 +32,8 @@ import {
   Code,
   Folder,
   FileText,
-  AlertTriangle
+  AlertTriangle,
+  Mail
 } from 'lucide-react';
 import { useAlerts } from './hooks/useAlerts';
 import { useStorage } from './hooks/useStorage';
@@ -180,7 +181,10 @@ function App() {
                 <path d="M10 18a8 8 0 100-16 8 8 0 000 16zM21 21l-6-6" stroke="#3B82F6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 <path d="M7 8h6M7 12h4" stroke="#3B82F6" strokeWidth="2" strokeLinecap="round"/>
               </svg>
-              <h1 className="text-xl font-bold text-white">ChainHound</h1>
+              <div>
+                <h1 className="text-xl font-bold text-white">ChainHound</h1>
+                <p className="text-xs text-gray-400">hunt for suspicious blockchain activity</p>
+              </div>
             </div>
             <div className="flex items-center gap-4">
               <button
@@ -413,21 +417,6 @@ function App() {
         )}
 
         <div className="mb-6">
-          <div className="bg-gray-800 border-l-4 border-blue-500 p-4 rounded-md">
-            <div className="flex">
-              <div className="flex-shrink-0">
-                <ArrowRight className="h-5 w-5 text-blue-500" />
-              </div>
-              <div className="ml-3">
-                <p className="text-sm text-gray-300">
-                  Track suspicious blockchain activity with our forensic tools. Identify illicit transactions, monitor addresses, and analyze contract behavior across multiple blockchains.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="mb-6">
           <div className="flex flex-col gap-4">
             <div className="w-full">
               <div className="relative">
@@ -641,6 +630,11 @@ function App() {
             <p className="text-center text-gray-400 text-sm">
               ChainHound &copy; {new Date().getFullYear()} - Blockchain Forensics Explorer
             </p>
+            <div className="bg-gray-800 rounded-lg p-4 border border-gray-700 mb-4 md:mb-0 w-full md:w-auto">
+              <p className="text-sm text-gray-300">
+                Track suspicious blockchain activity with our forensic tools. Identify illicit transactions, monitor addresses, and analyze contract behavior across multiple blockchains.
+              </p>
+            </div>
             <div className="flex flex-col sm:flex-row items-center gap-4">
               <div className="flex items-center gap-2">
                 <a
@@ -676,6 +670,12 @@ function App() {
                   className="text-gray-400 hover:text-gray-300"
                 >
                   <Code className="h-4 w-4" />
+                </a>
+                <a
+                  href="mailto:info@hacker.house"
+                  className="text-gray-400 hover:text-gray-300"
+                >
+                  <Mail className="h-4 w-4" />
                 </a>
               </div>
               <div className="flex items-center gap-2">

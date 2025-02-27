@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Code, AlertTriangle, ExternalLink, Copy, Check, FileCode } from 'lucide-react';
+import { Code, AlertTriangle, ExternalLink, Copy, Check, FileCode, Save } from 'lucide-react';
 import Web3Service from '../services/web3Service';
 import SyntaxHighlighter from 'react-syntax-highlighter';
 import { atomOneDark } from 'react-syntax-highlighter/dist/esm/styles/hljs';
@@ -277,6 +277,18 @@ contract DecompiledContract {
     setTimeout(() => setCopied(false), 2000);
   };
   
+  const saveToFile = (text: string, filename: string) => {
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+  
   const shortenAddress = (addr: string) => {
     return `${addr.substring(0, 8)}...${addr.substring(addr.length - 6)}`;
   };
@@ -331,13 +343,22 @@ contract DecompiledContract {
             <div>
               <div className="flex justify-between items-center mb-2">
                 <h3 className="text-lg font-medium text-white">Source Code</h3>
-                <button
-                  onClick={() => copyToClipboard(sourceCode)}
-                  className="flex items-center gap-1 px-3 py-1 text-sm bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-md transition-colors"
-                >
-                  {copied ? <Check className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
-                  {copied ? 'Copied!' : 'Copy'}
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => copyToClipboard(sourceCode)}
+                    className="flex items-center gap-1 px-3 py-1 text-sm bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-md transition-colors"
+                  >
+                    {copied ? <Check className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
+                    {copied ? 'Copied!' : 'Copy'}
+                  </button>
+                  <button
+                    onClick={() => saveToFile(sourceCode, `contract-${contractAddress.substring(0, 8)}.sol`)}
+                    className="flex items-center gap-1 px-3 py-1 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
+                  >
+                    <Save className="h-4 w-4" />
+                    <span>Save</span>
+                  </button>
+                </div>
               </div>
               <div className="bg-gray-900 rounded-lg p-4 overflow-x-auto">
                 <pre className="text-gray-300 text-sm font-mono whitespace-pre-wrap">{sourceCode}</pre>
@@ -395,6 +416,13 @@ contract DecompiledContract {
                       {copied ? <Check className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
                       {copied ? 'Copied!' : 'Copy'}
                     </button>
+                    <button
+                      onClick={() => saveToFile(bytecode, `bytecode-${contractAddress.substring(0, 8)}.txt`)}
+                      className="flex items-center gap-1 px-3 py-1 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
+                    >
+                      <Save className="h-4 w-4" />
+                      <span>Save</span>
+                    </button>
                     {bytecode !== 'Not a contract' && (
                       <button
                         onClick={decompileBytecode}
@@ -429,13 +457,22 @@ contract DecompiledContract {
               <div className="mt-4">
                 <div className="flex justify-between items-center mb-2">
                   <h3 className="text-lg font-medium text-white">Decompiled Source Code</h3>
-                  <button
-                    onClick={() => copyToClipboard(decompiled)}
-                    className="flex items-center gap-1 px-3 py-1 text-sm bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-md transition-colors"
-                  >
-                    {copied ? <Check className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
-                    {copied ? 'Copied!' : 'Copy'}
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => copyToClipboard(decompiled)}
+                      className="flex items-center gap-1 px-3 py-1 text-sm bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-md transition-colors"
+                    >
+                      {copied ? <Check className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
+                      {copied ? 'Copied!' : 'Copy'}
+                    </button>
+                    <button
+                      onClick={() => saveToFile(decompiled, `decompiled-${contractAddress.substring(0, 8)}.sol`)}
+                      className="flex items-center gap-1 px-3 py-1 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
+                    >
+                      <Save className="h-4 w-4" />
+                      <span>Save</span>
+                    </button>
+                  </div>
                 </div>
                 <div className="bg-gray-900 rounded-lg overflow-x-auto max-h-96">
                   <SyntaxHighlighter 

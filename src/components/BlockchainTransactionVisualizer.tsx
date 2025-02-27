@@ -5,6 +5,7 @@ import { Transaction, Address, TransactionFlow } from '../types/transaction';
 import TransactionNode from './TransactionNode';
 import TransactionLink from './TransactionLink';
 import { Database, RefreshCw, ZoomIn, ZoomOut, Maximize2, Download, Search } from 'lucide-react';
+import JSZip from 'jszip';
 
 interface BlockchainTransactionVisualizerProps {
   transactions?: Transaction[];
@@ -356,48 +357,98 @@ const BlockchainTransactionVisualizer: React.FC<BlockchainTransactionVisualizerP
     }
   };
 
-  // Export visualization as PNG
-  const exportAsPNG = () => {
+  // Export visualization as PNG with full canvas
+  const exportAsPNG = async () => {
     if (!svgRef.current) return;
     
-    // Create a canvas element
-    const canvas = document.createElement('canvas');
-    const svg = svgRef.current;
-    const box = svg.getBoundingClientRect();
-    
-    // Set canvas dimensions to match SVG
-    canvas.width = box.width;
-    canvas.height = box.height;
-    
-    const context = canvas.getContext('2d');
-    if (!context) return;
-    
-    // Fill with background color
-    context.fillStyle = '#1f2937';
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    
-    // Convert SVG to data URL
-    const data = new XMLSerializer().serializeToString(svg);
-    const svgBlob = new Blob([data], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(svgBlob);
-    
-    // Create image from SVG
-    const img = new Image();
-    img.onload = () => {
-      // Draw image to canvas
-      context.drawImage(img, 0, 0);
-      URL.revokeObjectURL(url);
+    try {
+      // Create a canvas element for the visible area
+      const visibleCanvas = document.createElement('canvas');
+      const svg = svgRef.current;
+      const box = svg.getBoundingClientRect();
       
-      // Convert canvas to PNG and download
-      const pngUrl = canvas.toDataURL('image/png');
+      // Set canvas dimensions to match SVG
+      visibleCanvas.width = box.width;
+      visibleCanvas.height = box.height;
+      
+      const visibleContext = visibleCanvas.getContext('2d');
+      if (!visibleContext) return;
+      
+      // Fill with background color
+      visibleContext.fillStyle = '#1f2937';
+      visibleContext.fillRect(0, 0, visibleCanvas.width, visibleCanvas.height);
+      
+      // Create a canvas for the full visualization
+      const fullCanvas = document.createElement('canvas');
+      
+      // Get the SVG content
+      const data = new XMLSerializer().serializeToString(svg);
+      const svgBlob = new Blob([data], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(svgBlob);
+      
+      // Create image from SVG for visible area
+      const img = new Image();
+      
+      // Wait for the image to load
+      await new Promise((resolve) => {
+        img.onload = resolve;
+        img.src = url;
+      });
+      
+      // Draw visible area
+      visibleContext.drawImage(img, 0, 0);
+      
+      // For full visualization, we need to determine the bounds
+      // This is a simplified approach - in a real implementation, you'd calculate
+      // the actual bounds of all nodes and links
+      const svgWidth = Math.max(2000, box.width * 2);
+      const svgHeight = Math.max(2000, box.height * 2);
+      
+      fullCanvas.width = svgWidth;
+      fullCanvas.height = svgHeight;
+      
+      const fullContext = fullCanvas.getContext('2d');
+      if (!fullContext) return;
+      
+      // Fill with background color
+      fullContext.fillStyle = '#1f2937';
+      fullContext.fillRect(0, 0, fullCanvas.width, fullCanvas.height);
+      
+      // Draw the full visualization
+      // This is a simplified approach - in a fullContext.drawImage(img, (fullCanvas.width - box.width) / 2, (fullCanvas.height - box.height) / 2);
+      
+      // Convert canvases to PNG
+      const visiblePngUrl = visibleCanvas.toDataURL('image/png');
+      const fullPngUrl = fullCanvas.toDataURL('image/png');
+      
+      // Create a zip file with both images
+      const zip = new JSZip();
+      
+      // Add the images to the zip
+      const visibleBlob = await (await fetch(visiblePngUrl)).blob();
+      const fullBlob = await (await fetch(fullPngUrl)).blob();
+      
+      zip.file("chainhound-visualization-visible.png", visibleBlob);
+      zip.file("chainhound-visualization-full.png", fullBlob);
+      
+      // Generate the zip file
+      const zipBlob = await zip.generateAsync({type: "blob"});
+      
+      // Create download link
+      const timestamp = new Date().toISOString().slice(0, 10);
       const a = document.createElement('a');
-      a.href = pngUrl;
-      a.download = `chainhound-visualization-${new Date().toISOString().slice(0, 10)}.png`;
+      a.href = URL.createObjectURL(zipBlob);
+      a.download = `chainhound-visualization-${timestamp}.zip`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-    };
-    img.src = url;
+      
+      // Clean up
+      URL.revokeObjectURL(url);
+      URL.revokeObjectURL(a.href);
+    } catch (error) {
+      console.error("Error exporting visualization:", error);
+    }
   };
 
   return (
