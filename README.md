@@ -118,10 +118,6 @@ If you find ChainHound useful, please consider supporting its development with a
 
 Your support helps us continue to improve and maintain this tool for the blockchain security community.
 
-## 📝 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
 ## 🙏 Acknowledgements
 
 - [Hacker House](https://hacker.house) for supporting the development of ChainHound

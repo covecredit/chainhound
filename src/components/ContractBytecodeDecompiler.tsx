@@ -218,6 +218,52 @@ contract CrossChainBridge {
         IERC20(token).transfer(owner, amount);
     }
 }`;
+    } else if (address.toLowerCase() === '0x96221423681a6d52e184d440a8efcebb105c7242'.toLowerCase()) {
+      return `// Decompiled from bytecode of address ${address}
+// WARNING: This contract was used in the Bybit hack as the transfer contract (ta)
+
+pragma solidity ^0.8.0;
+
+contract TransferContract {
+    address private owner;
+    address private destinationContract;
+    
+    constructor() {
+        owner = msg.sender;
+        destinationContract = 0xbdd077f651ebe7f7b3ce16fe5f2b025be2969516;
+    }
+    
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Not owner");
+        _;
+    }
+    
+    // Malicious function that forwards funds to the destination contract
+    function forward() external payable {
+        (bool success, ) = destinationContract.call{value: msg.value}("");
+        require(success, "Forward failed");
+    }
+    
+    // Function to execute arbitrary calls
+    function execute(address target, bytes calldata data) external onlyOwner returns (bytes memory) {
+        (bool success, bytes memory result) = target.call(data);
+        require(success, "Execution failed");
+        return result;
+    }
+    
+    // Function to change the destination contract
+    function setDestination(address newDestination) external onlyOwner {
+        destinationContract = newDestination;
+    }
+    
+    // Function to withdraw funds
+    function withdraw() external onlyOwner {
+        payable(owner).transfer(address(this).balance);
+    }
+    
+    // Fallback function to receive funds
+    receive() external payable {}
+}`;
     } else {
       // Generic decompiled code for other addresses
       return `// Decompiled from bytecode of address ${address}
@@ -289,10 +335,6 @@ contract DecompiledContract {
     URL.revokeObjectURL(url);
   };
   
-  const shortenAddress = (addr: string) => {
-    return `${addr.substring(0, 8)}...${addr.substring(addr.length - 6)}`;
-  };
-  
   return (
     <div className="bg-gray-800 rounded-lg shadow-lg overflow-hidden border border-gray-700">
       <div className="p-4 border-b border-gray-700">
@@ -308,7 +350,7 @@ contract DecompiledContract {
             rel="noopener noreferrer"
             className="text-blue-400 hover:underline flex items-center gap-1 inline-flex"
           >
-            {shortenAddress(contractAddress)}
+            {contractAddress}
             <ExternalLink className="h-3 w-3" />
           </a>
         </p>

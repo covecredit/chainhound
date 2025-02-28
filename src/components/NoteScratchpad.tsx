@@ -351,14 +351,15 @@ attacker to drain funds from the targeted wallets.`;
             </div>
             
             {activeNoteId ? (
-              <div className="flex-1 flex">
+              <div className="flex-1 flex overflow-hidden">
                 <textarea
                   value={noteContent}
                   onChange={(e) => setNoteContent(e.target.value)}
                   placeholder="Type your investigation notes here..."
-                  className="flex-1 w-1/2 bg-gray-800 text-gray-200 p-4 border-none outline-none resize-none font-mono"
+                  className="flex-1 w-1/2 bg-gray-800 text-gray-200 p-4 border-none outline-none resize-none font-mono overflow-y-auto h-full"
+                  style={{ maxHeight: "calc(500px - 43px)" }}
                 />
-                <div className="flex-1 w-1/2 bg-gray-900 text-gray-200 p-4 overflow-y-auto">
+                <div className="flex-1 w-1/2 bg-gray-900 text-gray-200 p-4 overflow-y-auto h-full" style={{ maxHeight: "calc(500px - 43px)" }}>
                   {renderFormattedContent(noteContent)}
                 </div>
               </div>

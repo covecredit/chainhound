@@ -52,11 +52,10 @@ const AddressLabel: React.FC<AddressLabelProps> = ({
     setIsEditing(false);
   };
   
-  const displayAddress = () => {
-    if (showFull) {
-      return address;
-    }
-    return `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
+  const handleAddressClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    // Open in a new tab
+    window.open(`/?address=${address}`, '_blank');
   };
   
   const getLabelColor = () => {
@@ -121,9 +120,11 @@ const AddressLabel: React.FC<AddressLabelProps> = ({
         </div>
       ) : (
         <>
-          {/* Fix: Don't use nested anchor tags */}
-          <span className="hover:underline text-gray-300 mr-1 font-mono">
-            {displayAddress()}
+          <span 
+            className="hover:underline text-gray-300 mr-1 font-mono cursor-pointer"
+            onClick={handleAddressClick}
+          >
+            {showFull ? address : address}
           </span>
           
           {country && (

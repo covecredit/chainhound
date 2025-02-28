@@ -205,20 +205,61 @@ const CROSS_CHAIN_ADDRESSES = {
   }
 };
 
-class Web3Service {
+// Public RPC endpoints with CORS enabled
+const CORS_FRIENDLY_RPC_ENDPOINTS = {
+  ethereum: [
+    'https://rpc.ankr.com/eth',
+    'https://ethereum.publicnode.com',
+    'https://eth.meowrpc.com',
+    'https://eth.drpc.org'
+  ],
+  bsc: [
+    'https://rpc.ankr.com/bsc',
+    'https://bsc.publicnode.com',
+    'https://bsc.meowrpc.com',
+    'https://bsc.drpc.org'
+  ],
+  polygon: [
+    'https://rpc.ankr.com/polygon',
+    'https://polygon.publicnode.com',
+    'https://polygon.meowrpc.com',
+    'https://polygon.drpc.org'
+  ],
+  arbitrum: [
+    'https://rpc.ankr.com/arbitrum',
+    'https://arbitrum.publicnode.com',
+    'https://arbitrum.meowrpc.com',
+    'https://arbitrum.drpc.org'
+  ],
+  optimism: [
+    'https://rpc.ankr.com/optimism',
+    'https://optimism.publicnode.com',
+    'https://optimism.meowrpc.com',
+    'https://optimism.drpc.org'
+  ]
+};
+
+export default class Web3Service {
   private web3Instances: Record<string, Web3>;
   private ethersProviders: Record<string, ethers.JsonRpcProvider>;
+  private connected: boolean = false;
+  private currentProviders: Record<string, string> = {};
   
   constructor(provider?: string) {
     this.web3Instances = {};
     this.ethersProviders = {};
     
     try {
-      // Initialize providers for all supported chains
+      // Initialize providers for all supported chains with CORS-friendly endpoints
       Object.entries(CHAIN_CONFIG).forEach(([chain, config]) => {
         try {
-          this.web3Instances[chain] = new Web3(config.rpcUrl);
-          this.ethersProviders[chain] = new ethers.JsonRpcProvider(config.rpcUrl);
+          // Use CORS-friendly endpoints
+          const corsEndpoints = CORS_FRIENDLY_RPC_ENDPOINTS[chain as keyof typeof CORS_FRIENDLY_RPC_ENDPOINTS] || [];
+          const rpcUrl = corsEndpoints.length > 0 ? corsEndpoints[0] : config.rpcUrl;
+          this.currentProviders[chain] = rpcUrl;
+          
+          this.web3Instances[chain] = new Web3(rpcUrl);
+          this.ethersProviders[chain] = new ethers.JsonRpcProvider(rpcUrl);
         } catch (error) {
           console.warn(`Error initializing ${chain} provider, using fallback:`, error);
           // Fallback to a dummy provider that will return sample data
@@ -229,8 +270,7 @@ class Web3Service {
       
       // Set default provider if provided
       if (provider) {
-        this.web3Instances.ethereum = new Web3(provider);
-        this.ethersProviders.ethereum = new ethers.JsonRpcProvider(provider);
+        this.connect(provider);
       }
     } catch (error) {
       console.warn("Error initializing Web3Service, using fallback:", error);
@@ -240,16 +280,121 @@ class Web3Service {
     }
   }
 
-  // Set a new provider for a specific chain
-  setProvider(provider: string, chain: string = 'ethereum'): void {
+  // Connect to a provider
+  async connect(provider: string): Promise<boolean> {
     try {
-      this.web3Instances[chain] = new Web3(provider);
-      this.ethersProviders[chain] = new ethers.JsonRpcProvider(provider);
+      // Try to use the provided provider first
+      try {
+        this.web3Instances.ethereum = new Web3(provider);
+        this.ethersProviders.ethereum = new ethers.JsonRpcProvider(provider);
+        this.currentProviders.ethereum = provider;
+        
+        // Check if connection is successful
+        const isConnected = await this.isConnected();
+        if (isConnected) {
+          this.connected = true;
+          return true;
+        }
+      } catch (error) {
+        console.warn(`Error connecting to provided provider, trying CORS-friendly alternatives:`, error);
+      }
+      
+      // If the provided provider fails, try CORS-friendly alternatives
+      for (const rpcUrl of CORS_FRIENDLY_RPC_ENDPOINTS.ethereum) {
+        try {
+          this.web3Instances.ethereum = new Web3(rpcUrl);
+          this.ethersProviders.ethereum = new ethers.JsonRpcProvider(rpcUrl);
+          this.currentProviders.ethereum = rpcUrl;
+          
+          // Check if connection is successful
+          const isConnected = await this.isConnected();
+          if (isConnected) {
+            this.connected = true;
+            return true;
+          }
+        } catch (err) {
+          console.warn(`Failed to connect to ${rpcUrl}, trying next endpoint...`);
+        }
+      }
+      
+      // If all attempts fail, use fallback data
+      this.connected = false;
+      return false;
+    } catch (error) {
+      console.warn(`Error connecting to any provider:`, error);
+      this.connected = false;
+      return false;
+    }
+  }
+  
+  // Get current provider URL
+  getCurrentProvider(chain: string = 'ethereum'): string {
+    return this.currentProviders[chain] || 'Not connected';
+  }
+  
+  // Disconnect from provider
+  disconnect(): void {
+    this.connected = false;
+  }
+  
+  // Check if connected to a provider
+  async isConnected(): Promise<boolean> {
+    try {
+      const blockNumber = await this.web3Instances.ethereum.eth.getBlockNumber();
+      return blockNumber > 0;
+    } catch (error) {
+      console.warn(`Error checking connection to ethereum provider:`, error);
+      return false;
+    }
+  }
+
+  // Set a new provider for a specific chain
+  async setProvider(provider: string, chain: string = 'ethereum'): Promise<boolean> {
+    try {
+      // Try to use the provided provider first
+      try {
+        this.web3Instances[chain] = new Web3(provider);
+        this.ethersProviders[chain] = new ethers.JsonRpcProvider(provider);
+        this.currentProviders[chain] = provider;
+        
+        // Check if connection is successful
+        const blockNumber = await this.web3Instances[chain].eth.getBlockNumber();
+        if (blockNumber > 0) {
+          return true;
+        }
+      } catch (error) {
+        console.warn(`Error connecting to provided provider for ${chain}, trying CORS-friendly alternatives:`, error);
+      }
+      
+      // If the provided provider fails, try CORS-friendly alternatives
+      const corsEndpoints = CORS_FRIENDLY_RPC_ENDPOINTS[chain as keyof typeof CORS_FRIENDLY_RPC_ENDPOINTS] || [];
+      for (const rpcUrl of corsEndpoints) {
+        try {
+          this.web3Instances[chain] = new Web3(rpcUrl);
+          this.ethersProviders[chain] = new ethers.JsonRpcProvider(rpcUrl);
+          this.currentProviders[chain] = rpcUrl;
+          
+          // Check if connection is successful
+          const blockNumber = await this.web3Instances[chain].eth.getBlockNumber();
+          if (blockNumber > 0) {
+            return true;
+          }
+        } catch (err) {
+          console.warn(`Failed to connect to ${rpcUrl} for ${chain}, trying next endpoint...`);
+        }
+      }
+      
+      // If all attempts fail, use fallback
+      console.warn(`Error setting provider for ${chain}, using fallback`);
+      this.web3Instances[chain] = new Web3('http://localhost:8545');
+      this.ethersProviders[chain] = new ethers.JsonRpcProvider('http://localhost:8545');
+      return false;
     } catch (error) {
       console.warn(`Error setting provider for ${chain}, using fallback:`, error);
       // Fallback to a dummy provider
       this.web3Instances[chain] = new Web3('http://localhost:8545');
       this.ethersProviders[chain] = new ethers.JsonRpcProvider('http://localhost:8545');
+      return false;
     }
   }
 
@@ -601,7 +746,7 @@ class Web3Service {
       } catch (err) {
         console.warn(`Error getting contract code on ${chain}, using fallback:`, err);
         // Return sample bytecode for demo
-        return "0x608060405234801561001057600080fd5b50600436106100415760003560e01c8063251c1aa3146100465780635c60da1b146100645780638f28397014610082575b600080fd5b61004e61009e565b60405161005b919061024a565b60405180910390f35b61006c6100a4565b60405161007991906101f1565b60405180910390f35b61009c600480360381019061009791906101b8565b6100c8565b005b60005481565b60008060009054906101000a900473ffffffffffffffffffffffffffffffffffffffff16905090565b806000806101000a81 548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff1602179055506000808273ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16815260200190815260200160002060006101000a81548160ff0219169083151502179055505050565b60008135905061016d816102a6565b92915050565b60008151905061018281610...";
+        return "0x608060405234801561001057600080fd5b50600436106100415760003560e01c8063251c1aa3146100465780635c60da1b146100645780638f28397014610082575b600080fd5b61004e61009e565b60405161005b919061024a565b60405180910390f35b61006c6100a4565b60405161007991906101f1565b60405180910390f35b61009c600480360381019061009791906101b8565b6100c8565b005b60005481565b60008060009054906101000a900473ffffffffffffffffffffffffffffffffffffffff16905090565b806000806101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff1602179055506000808273ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16815260200190815260200160002060006101000a81548160ff0219169083151502179055505050565b60008135905061016d816102a6565b92915050565b60008151905061018281610...";
       }
     } catch (error) {
       console.warn(`Error fetching contract bytecode on ${chain}, using fallback:`, error);
@@ -904,35 +1049,40 @@ class Web3Service {
           sender: sampleAddresses[Math.floor(Math.random() * sampleAddresses.length)],
           amount0In: this.web3Instances[chain].utils.toWei((Math.random() * 5).toFixed(18), 'ether'),
           amount1In: this.web3Instances[chain].utils.toWei((Math.random() * 0.1).toFixed(18), 'ether'),
-          amount0Out: this.web3Instances[chain].utils.toWei((Math.random() * 0.1).toFixed(18), 'ether'),
+          amount0Out: this.web3Instances[chain].utils.toWei(( Math.random() * 0.1).toFixed(18), 'ether'),
           amount1Out: this.web3Instances[chain].utils.toWei((Math.random() * 5).toFixed(18), 'ether'),
           to: sampleAddresses[Math.floor(Math.random() * sampleAddresses.length)]
         };
-      } else if (eventName === 'BridgeInitiated' || eventName === 'BridgeCompleted') {
-        parameters = {
-          user: sampleAddresses[Math.floor(Math.random() * sampleAddresses.length)],
-          amount: this.web3Instances[chain].utils.toWei((Math.random() * 10).toFixed(18), 'ether'),
-          targetChain: chain === 'ethereum' ? 'bsc' : 'ethereum',
-          nonce: Math.floor(Math.random() * 1000000)
-        };
-      } else {
+      } else if (eventName === 'Deposit' || eventName === 'Withdrawal') {
         parameters = {
           user: sampleAddresses[Math.floor(Math.random() * sampleAddresses.length)],
           amount: this.web3Instances[chain].utils.toWei((Math.random() * 10).toFixed(18), 'ether')
+        };
+      } else if (eventName === 'BridgeInitiated') {
+        parameters = {
+          user: sampleAddresses[Math.floor(Math.random() * sampleAddresses.length)],
+          amount: this.web3Instances[chain].utils.toWei((Math.random() * 10).toFixed(18), 'ether'),
+          targetChain: Object.keys(CHAIN_CONFIG).filter(c => c !== chain)[Math.floor(Math.random() * (Object.keys(CHAIN_CONFIG).length - 1))],
+          txHash: `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`
+        };
+      } else if (eventName === 'BridgeCompleted') {
+        parameters = {
+          user: sampleAddresses[Math.floor(Math.random() * sampleAddresses.length)],
+          amount: this.web3Instances[chain].utils.toWei((Math.random() * 10).toFixed(18), 'ether'),
+          sourceChain: Object.keys(CHAIN_CONFIG).filter(c => c !== chain)[Math.floor(Math.random() * (Object.keys(CHAIN_CONFIG).length - 1))],
+          txHash: `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`
         };
       }
       
       return {
         address: contractAddress,
-        blockNumber: blockNumber,
+        blockNumber,
         transactionHash: txHash,
         logIndex: i,
-        eventName: eventName,
-        parameters: parameters,
-        timestamp: timestamp
+        eventName,
+        parameters,
+        timestamp
       };
     });
   }
 }
-
-export default Web3Service;

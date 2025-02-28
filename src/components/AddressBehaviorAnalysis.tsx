@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart, PieChart, Shield, AlertTriangle, Clock, ArrowDownUp, Activity, Users, FileText, Download, Flag } from 'lucide-react';
+import { BarChart, PieChart, Shield, AlertTriangle, Clock, ArrowDownUp, Activity, Users, FileText, Download, Flag, Network } from 'lucide-react';
 import Web3Service from '../services/web3Service';
 import { Transaction } from '../types/transaction';
 import { EventLog } from '../types/event';
@@ -28,6 +28,8 @@ interface BehaviorMetrics {
   transactionFrequency: number;
   activityByTime: Record<string, number>;
   activityByDay: Record<string, number>;
+  activityByMonth: Record<string, number>;
+  activityByYear: Record<string, number>;
   trustScore: number;
   riskFactors: string[];
   lastActivity: number;
@@ -40,6 +42,17 @@ interface BehaviorMetrics {
   chainDistribution: Record<string, number>;
   recentTransactions: Transaction[];
   countryTags: string[];
+  valueDistribution: {
+    small: number;
+    medium: number;
+    large: number;
+    veryLarge: number;
+  };
+  gasUsage: {
+    total: number;
+    average: number;
+  };
+  contractTypes: Record<string, number>;
 }
 
 const AddressBehaviorAnalysis: React.FC<AddressBehaviorAnalysisProps> = ({
@@ -52,6 +65,7 @@ const AddressBehaviorAnalysis: React.FC<AddressBehaviorAnalysisProps> = ({
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState<'week' | 'month' | 'year' | 'all'>('month');
+  const [chartView, setChartView] = useState<'time' | 'day' | 'month' | 'year' | 'chain' | 'value'>('time');
   
   const web3Service = new Web3Service(providerUrl);
   
@@ -119,28 +133,83 @@ const AddressBehaviorAnalysis: React.FC<AddressBehaviorAnalysisProps> = ({
     const averageValue = values.length > 0 ? totalValue / values.length : 0;
     const largestTransaction = Math.max(...values, 0);
     
+    // Value distribution
+    const valueDistribution = {
+      small: values.filter(v => v < 0.1).length,
+      medium: values.filter(v => v >= 0.1 && v < 1).length,
+      large: values.filter(v => v >= 1 && v < 10).length,
+      veryLarge: values.filter(v => v >= 10).length
+    };
+    
+    // Gas usage (simplified)
+    const gasUsage = {
+      total: filteredTxs.length * 21000, // Simplified: assume 21000 gas per tx
+      average: 21000 // Simplified
+    };
+    
+    // Contract types (simplified)
+    const contractTypes: Record<string, number> = {
+      'ERC20': 0,
+      'ERC721': 0,
+      'DEX': 0,
+      'Bridge': 0,
+      'Other': 0
+    };
+    
+    // Categorize contract interactions (simplified)
+    outgoingTxs.forEach(tx => {
+      if (tx.input && tx.input.startsWith('0xa9059cbb')) {
+        contractTypes['ERC20']++;
+      } else if (tx.input && tx.input.startsWith('0x23b872dd')) {
+        contractTypes['ERC721']++;
+      } else if (tx.input && tx.input.startsWith('0x38ed1739')) {
+        contractTypes['DEX']++;
+      } else if (tx.crossChainRef && tx.crossChainRef.length > 0) {
+        contractTypes['Bridge']++;
+      } else {
+        contractTypes['Other']++;
+      }
+    });
+    
     // Activity by time
     const activityByTime: Record<string, number> = {};
     for (let i = 0; i < 24; i++) {
       activityByTime[`${i.toString().padStart(2, '0')}:00`] = 0;
     }
     
-    filteredTxs.forEach(tx => {
-      const date = new Date(Number(tx.timestamp) * 1000);
-      const hour = date.getHours();
-      const timeSlot = `${hour.toString().padStart(2, '0')}:00`;
-      activityByTime[timeSlot] = (activityByTime[timeSlot] || 0) + 1;
-    });
-    
     // Activity by day of week
     const activityByDay: Record<string, number> = {
       'Sun': 0, 'Mon': 0, 'Tue': 0, 'Wed': 0, 'Thu': 0, 'Fri': 0, 'Sat': 0
     };
     
+    // Activity by month
+    const activityByMonth: Record<string, number> = {
+      'Jan': 0, 'Feb': 0, 'Mar': 0, 'Apr': 0, 'May': 0, 'Jun': 0,
+      'Jul': 0, 'Aug': 0, 'Sep': 0, 'Oct': 0, 'Nov': 0, 'Dec': 0
+    };
+    
+    // Activity by year
+    const activityByYear: Record<string, number> = {};
+    
     filteredTxs.forEach(tx => {
       const date = new Date(Number(tx.timestamp) * 1000);
+      
+      // By hour
+      const hour = date.getHours();
+      const timeSlot = `${hour.toString().padStart(2, '0')}:00`;
+      activityByTime[timeSlot] = (activityByTime[timeSlot] || 0) + 1;
+      
+      // By day
       const day = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][date.getDay()];
       activityByDay[day] = (activityByDay[day] || 0) + 1;
+      
+      // By month
+      const month = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][date.getMonth()];
+      activityByMonth[month] = (activityByMonth[month] || 0) + 1;
+      
+      // By year
+      const year = date.getFullYear().toString();
+      activityByYear[year] = (activityByYear[year] || 0) + 1;
     });
     
     // Chain distribution
@@ -169,8 +238,7 @@ const AddressBehaviorAnalysis: React.FC<AddressBehaviorAnalysisProps> = ({
     const countryTags: string[] = [];
     
     // Check for North Korean patterns
-    if (address.toLowerCase() === '0x0fa09c3a328792253f8dee7116848723b72a6d2e'.toLowerCase() ||
-        address.toLowerCase() === '0xfa09c3a328792253f8dee7116848723b72a6d2ea'.toLowerCase()) {
+    if (address.toLowerCase() === '0x0fa09c3a328792253f8dee7116848723b72a6d2e'.toLowerCase()) {
       countryTags.push('KP'); // North Korea
     }
     
@@ -199,15 +267,13 @@ const AddressBehaviorAnalysis: React.FC<AddressBehaviorAnalysisProps> = ({
     
     // Check for interactions with known suspicious addresses
     const suspiciousAddresses = [
-      '0xfa09c3a328792253f8dee7116848723b72a6d2ea',
       '0x0fa09c3a328792253f8dee7116848723b72a6d2e', // Bybit hacker address
       '0xdfd5293d8e347dfe59e90efd55b2956a1343963d',
       '0x21a31ee1afc51d94c2efccaa2092ad1028285549'
     ];
     
     // Check if this address is the Bybit hacker address
-    if (address.toLowerCase() === '0x0fa09c3a328792253f8dee7116848723b72a6d2e'.toLowerCase() ||
-        address.toLowerCase() === '0xfa09c3a328792253f8dee7116848723b72a6d2ea'.toLowerCase()) {
+    if (address.toLowerCase() === '0x0fa09c3a328792253f8dee7116848723b72a6d2e'.toLowerCase()) {
       riskFactors.push('Address identified as Bybit hack perpetrator');
       riskFactors.push('Associated with theft of over $1.4B in cryptocurrency');
       riskFactors.push('High-risk malicious actor');
@@ -267,7 +333,6 @@ const AddressBehaviorAnalysis: React.FC<AddressBehaviorAnalysisProps> = ({
     
     // Special case for known malicious addresses
     if (address.toLowerCase() === '0x0fa09c3a328792253f8dee7116848723b72a6d2e'.toLowerCase() ||
-        address.toLowerCase() === '0xfa09c3a328792253f8dee7116848723b72a6d2ea'.toLowerCase() ||
         address.toLowerCase() === '0xbdd077f651ebe7f7b3ce16fe5f2b025be2969516'.toLowerCase()) {
       trustScore = 0; // Zero trust for known malicious addresses
     }
@@ -290,6 +355,8 @@ const AddressBehaviorAnalysis: React.FC<AddressBehaviorAnalysisProps> = ({
       transactionFrequency,
       activityByTime,
       activityByDay,
+      activityByMonth,
+      activityByYear,
       trustScore,
       riskFactors,
       lastActivity,
@@ -297,7 +364,10 @@ const AddressBehaviorAnalysis: React.FC<AddressBehaviorAnalysisProps> = ({
       historyPoisoningRisk,
       chainDistribution,
       recentTransactions,
-      countryTags
+      countryTags,
+      valueDistribution,
+      gasUsage,
+      contractTypes
     });
   };
   
@@ -400,6 +470,69 @@ const AddressBehaviorAnalysis: React.FC<AddressBehaviorAnalysisProps> = ({
     };
   };
   
+  // Prepare chart data for activity by day
+  const getActivityByDayChartData = () => {
+    if (!metrics) return null;
+    
+    const labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const data = labels.map(day => metrics.activityByDay[day] || 0);
+    
+    return {
+      labels,
+      datasets: [
+        {
+          label: 'Transactions',
+          data,
+          backgroundColor: 'rgba(139, 92, 246, 0.5)',
+          borderColor: 'rgba(139, 92, 246, 1)',
+          borderWidth: 1
+        }
+      ]
+    };
+  };
+  
+  // Prepare chart data for activity by month
+  const getActivityByMonthChartData = () => {
+    if (!metrics) return null;
+    
+    const labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const data = labels.map(month => metrics.activityByMonth[month] || 0);
+    
+    return {
+      labels,
+      datasets: [
+        {
+          label: 'Transactions',
+          data,
+          backgroundColor: 'rgba(16, 185, 129, 0.5)',
+          borderColor: 'rgba(16, 185, 129, 1)',
+          borderWidth: 1
+        }
+      ]
+    };
+  };
+  
+  // Prepare chart data for activity by year
+  const getActivityByYearChartData = () => {
+    if (!metrics) return null;
+    
+    const labels = Object.keys(metrics.activityByYear).sort();
+    const data = labels.map(year => metrics.activityByYear[year] || 0);
+    
+    return {
+      labels,
+      datasets: [
+        {
+          label: 'Transactions',
+          data,
+          backgroundColor: 'rgba(245, 158, 11, 0.5)',
+          borderColor: 'rgba(245, 158, 11, 1)',
+          borderWidth: 1
+        }
+      ]
+    };
+  };
+  
   // Prepare chart data for chain distribution
   const getChainDistributionChartData = () => {
     if (!metrics || !metrics.chainDistribution) return null;
@@ -432,13 +565,91 @@ const AddressBehaviorAnalysis: React.FC<AddressBehaviorAnalysisProps> = ({
     };
   };
   
+  // Prepare chart data for value distribution
+  const getValueDistributionChartData = () => {
+    if (!metrics) return null;
+    
+    const labels = ['< 0.1 ETH', '0.1-1 ETH', '1-10 ETH', '> 10 ETH'];
+    const data = [
+      metrics.valueDistribution.small,
+      metrics.valueDistribution.medium,
+      metrics.valueDistribution.large,
+      metrics.valueDistribution.veryLarge
+    ];
+    
+    const backgroundColors = [
+      'rgba(59, 130, 246, 0.7)',
+      'rgba(16, 185, 129, 0.7)',
+      'rgba(245, 158, 11, 0.7)',
+      'rgba(239, 68, 68, 0.7)'
+    ];
+    
+    return {
+      labels,
+      datasets: [
+        {
+          label: 'Transactions',
+          data,
+          backgroundColor: backgroundColors,
+          borderColor: backgroundColors.map(color => color.replace('0.7', '1')),
+          borderWidth: 1
+        }
+      ]
+    };
+  };
+  
+  // Get current chart data based on selected view
+  const getCurrentChartData = () => {
+    switch (chartView) {
+      case 'time':
+        return getActivityByTimeChartData();
+      case 'day':
+        return getActivityByDayChartData();
+      case 'month':
+        return getActivityByMonthChartData();
+      case 'year':
+        return getActivityByYearChartData();
+      case 'chain':
+        return getChainDistributionChartData();
+      case 'value':
+        return getValueDistributionChartData();
+      default:
+        return getActivityByTimeChartData();
+    }
+  };
+  
+  // Get chart title based on selected view
+  const getChartTitle = () => {
+    switch (chartView) {
+      case 'time':
+        return 'Activity by Hour of Day';
+      case 'day':
+        return 'Activity by Day of Week';
+      case 'month':
+        return 'Activity by Month';
+      case 'year':
+        return 'Activity by Year';
+      case 'chain':
+        return 'Chain Distribution';
+      case 'value':
+        return 'Transaction Value Distribution';
+      default:
+        return 'Activity Analysis';
+    }
+  };
+  
+  // Get chart type based on selected view
+  const getChartType = () => {
+    return chartView === 'chain' || chartView === 'value' ? 'pie' : 'bar';
+  };
+  
   if (loading) {
     return (
       <div className="bg-gray-800 rounded-lg shadow-lg overflow-hidden border border-gray-700">
         <div className="p-4 border-b border-gray-700">
           <h2 className="text-xl font-semibold text-white flex items-center gap-2">
             <Activity className="h-5 w-5 text-blue-500" />
-            Threat Analysis
+            Behavior Insights
           </h2>
           <p className="text-sm text-gray-400 mt-1">
             Analyzing behavior for <AddressLabel address={address} showEdit={false} />
@@ -459,7 +670,7 @@ const AddressBehaviorAnalysis: React.FC<AddressBehaviorAnalysisProps> = ({
         <div className="p-4 border-b border-gray-700">
           <h2 className="text-xl font-semibold text-white flex items-center gap-2">
             <Activity className="h-5 w-5 text-blue-500" />
-            Threat Analysis
+            Behavior Insights
           </h2>
           <p className="text-sm text-gray-400 mt-1">
             Error analyzing <AddressLabel address={address} showEdit={false} />
@@ -480,7 +691,7 @@ const AddressBehaviorAnalysis: React.FC<AddressBehaviorAnalysisProps> = ({
         <div className="p-4 border-b border-gray-700">
           <h2 className="text-xl font-semibold text-white flex items-center gap-2">
             <Activity className="h-5 w-5 text-blue-500" />
-            Threat Analysis
+            Behavior Insights
           </h2>
           <p className="text-sm text-gray-400 mt-1">
             No data available for <AddressLabel address={address} showEdit={false} />
@@ -501,7 +712,7 @@ const AddressBehaviorAnalysis: React.FC<AddressBehaviorAnalysisProps> = ({
           <div>
             <h2 className="text-xl font-semibold text-white flex items-center gap-2">
               <Activity className="h-5 w-5 text-blue-500" />
-              Threat Analysis
+              Behavior Insights
             </h2>
             <p className="text-sm text-gray-400 mt-1">
               Analyzing behavior for <AddressLabel address={address} showEdit={false} />
@@ -645,7 +856,7 @@ const AddressBehaviorAnalysis: React.FC<AddressBehaviorAnalysisProps> = ({
               
               <div className="mt-4">
                 <div className="flex justify-between items-center mb-1">
-                  <div className="text-sm text-gray-400">First Activity</div>
+                  <div className="text-sm text-gray- 400">First Activity</div>
                   <div className="text-sm text-gray-300">{formatTimestamp(metrics.firstActivity)}</div>
                 </div>
                 <div className="flex justify-between items-center">
@@ -676,12 +887,17 @@ const AddressBehaviorAnalysis: React.FC<AddressBehaviorAnalysisProps> = ({
               
               <div className="mt-4">
                 <div className="text-sm text-gray-400 mb-2">Transaction Value Distribution</div>
-                <div className="h-4 bg-gray-800 rounded-full overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-green-500 to-red-500" style={{ width: '100%' }}></div>
+                <div className="grid grid-cols-4 gap-1">
+                  <div className="h-4 bg-blue-600/30 rounded-l-full overflow-hidden" style={{ width: '100%' }}></div>
+                  <div className="h-4 bg-green-600/30 overflow-hidden" style={{ width: '100%' }}></div>
+                  <div className="h-4 bg-yellow-600/30 overflow-hidden" style={{ width: '100%' }}></div>
+                  <div className="h-4 bg-red-600/30 rounded-r-full overflow-hidden" style={{ width: '100%' }}></div>
                 </div>
-                <div className="flex justify-between mt-1">
-                  <span className="text-xs text-gray-500">Small</span>
-                  <span className="text-xs text-gray-500">Large</span>
+                <div className="flex justify-between mt-1 text-xs text-gray-500">
+                  <span>&lt; 0.1 ETH ({metrics.valueDistribution.small})</span>
+                  <span>0.1-1 ETH ({metrics.valueDistribution.medium})</span>
+                  <span>1-10 ETH ({metrics.valueDistribution.large})</span>
+                  <span>&gt; 10 ETH ({metrics.valueDistribution.veryLarge})</span>
                 </div>
               </div>
             </div>
@@ -689,15 +905,82 @@ const AddressBehaviorAnalysis: React.FC<AddressBehaviorAnalysisProps> = ({
         </div>
         
         {/* Activity Patterns */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <div>
-            <h3 className="text-lg font-medium text-white mb-3">Activity by Time</h3>
-            <div className="bg-gray-900 rounded-lg p-4 border border-gray-700">
-              {getActivityByTimeChartData() && (
-                <Bar 
-                  data={getActivityByTimeChartData()!}
+        <div className="mb-6">
+          <div className="flex justify-between items-center mb-3">
+            <h3 className="text-lg font-medium text-white">{getChartTitle() }</h3>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setChartView('time')}
+                className={`px-2 py-1 text-xs rounded ${chartView === 'time' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+              >
+                Hour
+              </button>
+              <button
+                onClick={() => setChartView('day')}
+                className={`px-2 py-1 text-xs rounded ${chartView === 'day' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+              >
+                Day
+              </button>
+              <button
+                onClick={() => setChartView('month')}
+                className={`px-2 py-1 text-xs rounded ${chartView === 'month' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+              >
+                Month
+              </button>
+              <button
+                onClick={() => setChartView('year')}
+                className={`px-2 py-1 text-xs rounded ${chartView === 'year' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+              >
+                Year
+              </button>
+              <button
+                onClick={() => setChartView('chain')}
+                className={`px-2 py-1 text-xs rounded ${chartView === 'chain' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+              >
+                Chain
+              </button>
+              <button
+                onClick={() => setChartView('value')}
+                className={`px-2 py-1 text-xs rounded ${chartView === 'value' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+              >
+                Value
+              </button>
+            </div>
+          </div>
+          <div className="bg-gray-900 rounded-lg p-4 border border-gray-700">
+            <div className="h-64">
+              {getChartType() === 'pie' ? (
+                <Pie 
+                  data={getCurrentChartData()!}
                   options={{
                     responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: {
+                        position: 'right',
+                        labels: {
+                          color: '#9ca3af',
+                          font: {
+                            size: 12
+                          }
+                        }
+                      },
+                      tooltip: {
+                        backgroundColor: '#1f2937',
+                        titleColor: '#f3f4f6',
+                        bodyColor: '#f3f4f6',
+                        borderColor: '#374151',
+                        borderWidth: 1
+                      }
+                    }
+                  }}
+                />
+              ) : (
+                <Bar 
+                  data={getCurrentChartData()!}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
                     plugins: {
                       legend: {
                         display: false
@@ -733,36 +1016,66 @@ const AddressBehaviorAnalysis: React.FC<AddressBehaviorAnalysisProps> = ({
               )}
             </div>
           </div>
+        </div>
+        
+        {/* Contract Interactions */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          <div>
+            <h3 className="text-lg font-medium text-white mb-3">Contract Interactions</h3>
+            <div className="bg-gray-900 rounded-lg p-4 border border-gray-700">
+              <div className="grid grid-cols-1 gap-3">
+                {Object.entries(metrics.contractTypes).map(([type, count]) => (
+                  <div key={type} className="bg-gray-800 p-3 rounded-lg">
+                    <div className="flex justify-between items-center">
+                      <div className="text-sm text-gray-400">{type} Interactions</div>
+                      <div className="text-sm font-bold text-white">{count}</div>
+                    </div>
+                    <div className="mt-2 w-full bg-gray-700 rounded-full h-1.5">
+                      <div 
+                        className={`h-1.5 rounded-full ${
+                          type === 'ERC20' ? 'bg-blue-500' : 
+                          type === 'ERC721' ? 'bg-purple-500' : 
+                          type === 'DEX' ? 'bg-green-500' : 
+                          type === 'Bridge' ? 'bg-yellow-500' : 
+                          'bg-gray-500'
+                        }`} 
+                        style={{ width: `${metrics.contractInteractions > 0 ? (count / metrics.contractInteractions) * 100 : 0}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
           
           <div>
-            <h3 className="text-lg font-medium text-white mb-3">Chain Distribution</h3>
+            <h3 className="text-lg font-medium text-white mb-3">Gas Usage</h3>
             <div className="bg-gray-900 rounded-lg p-4 border border-gray-700">
-              {getChainDistributionChartData() && (
-                <Pie 
-                  data={getChainDistributionChartData()!}
-                  options={{
-                    responsive: true,
-                    plugins: {
-                      legend: {
-                        position: 'right',
-                        labels: {
-                          color: '#9ca3af',
-                          font: {
-                            size: 12
-                          }
-                        }
-                      },
-                      tooltip: {
-                        backgroundColor: '#1f2937',
-                        titleColor: '#f3f4f6',
-                        bodyColor: '#f3f4f6',
-                        borderColor: '#374151',
-                        borderWidth: 1
-                      }
-                    }
-                  }}
-                />
-              )}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-gray-800 p-3 rounded-lg">
+                  <div className="text-sm text-gray-400 mb-1">Total Gas Used</div>
+                  <div className="text-xl font-bold text-white">{metrics.gasUsage.total.toLocaleString()}</div>
+                </div>
+                <div className="bg-gray-800 p-3 rounded-lg">
+                  <div className="text-sm text-gray-400 mb-1">Average Gas Per Tx</div>
+                  <div className="text-xl font-bold text-white">{metrics.gasUsage.average.toLocaleString()}</div>
+                </div>
+              </div>
+              
+              <div className="mt-4">
+                <div className="text-sm text-gray-400 mb-2">Transaction Frequency</div>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-2 bg-gray-700 rounded-full">
+                    <div 
+                      className="h-2 bg-blue-500 rounded-full" 
+                      style={{ width: `${Math.min(100, metrics.transactionFrequency * 10)}%` }}
+                    ></div>
+                  </div>
+                  <div className="text-sm text-gray-300">
+                    {metrics.transactionFrequency.toFixed(2)} tx/day
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -831,6 +1144,19 @@ const AddressBehaviorAnalysis: React.FC<AddressBehaviorAnalysisProps> = ({
                     <h4 className="text-md font-medium text-white">Country Association</h4>
                     <p className="text-sm text-gray-300">
                       This address shows patterns consistent with North Korean (🇰🇵) threat actors. It may be associated with state-sponsored hacking groups like Lazarus Group or APT38.
+                    </p>
+                  </div>
+                </div>
+              )}
+              
+              {Object.keys(metrics.chainDistribution).length > 1 && (
+                <div className="flex items-start gap-2">
+                  <Network className="h-5 w-5 text-purple-500 mt-0.5" />
+                  <div>
+                    <h4 className="text-md font-medium text-white">Cross-Chain Activity</h4>
+                    <p className="text-sm text-gray-300">
+                      This address is active across multiple blockchains ({Object.keys(metrics.chainDistribution).join(', ')}), 
+                      which could indicate sophisticated cross-chain operations or potential attempts to obfuscate fund movements.
                     </p>
                   </div>
                 </div>

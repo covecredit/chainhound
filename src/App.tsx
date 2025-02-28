@@ -31,7 +31,10 @@ import {
   Folder,
   FileText,
   AlertTriangle,
-  Mail
+  Mail,
+  Wifi,
+  WifiOff,
+  Server
 } from 'lucide-react';
 import { useAlerts } from './hooks/useAlerts';
 import { useStorage } from './hooks/useStorage';
@@ -51,10 +54,69 @@ function App() {
   const [importError, setImportError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [nodeConnected, setNodeConnected] = useState<boolean>(false);
+  const [nodeInfo, setNodeInfo] = useState<{
+    name: string;
+    version: string;
+    network: string;
+    blockNumber: number;
+  } | null>(null);
   
   const web3Service = new Web3Service(providerUrl);
-  const { clearAllStoredData, exportStorageData, importStorageData, getFromStorage, setInStorage } = useStorage();
+  const { getFromStorage, setInStorage, clearAllStoredData, exportStorageData, importStorageData } = useStorage();
   const { checkForAlerts } = useAlerts();
+  
+  // Check node connection status
+  useEffect(() => {
+    checkNodeConnection();
+  }, [providerUrl]);
+  
+  const checkNodeConnection = async () => {
+    try {
+      setLoading(true);
+      const isConnected = await web3Service.isConnected();
+      setNodeConnected(isConnected);
+      
+      if (isConnected) {
+        // Get node info
+        const blockNumber = await web3Service.getLatestBlockNumber(blockchain);
+        setNodeInfo({
+          name: blockchain.charAt(0).toUpperCase() + blockchain.slice(1),
+          version: 'Latest',
+          network: blockchain === 'ethereum' ? 'Mainnet' : blockchain === 'bsc' ? 'BSC Mainnet' : 'Polygon Mainnet',
+          blockNumber
+        });
+      } else {
+        setNodeInfo(null);
+      }
+    } catch (error) {
+      console.error('Error checking node connection:', error);
+      setNodeConnected(false);
+      setNodeInfo(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  const connectToNode = async () => {
+    try {
+      setLoading(true);
+      await web3Service.connect(providerUrl);
+      await checkNodeConnection();
+    } catch (error) {
+      console.error('Error connecting to node:', error);
+      setNodeConnected(false);
+      setNodeInfo(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  const disconnectFromNode = () => {
+    web3Service.disconnect();
+    setNodeConnected(false);
+    setNodeInfo(null);
+  };
   
   const fetchTransactions = async (): Promise<Transaction[]> => {
     try {
@@ -144,22 +206,6 @@ function App() {
     setShowDonationBanner(false);
   };
 
-  // Output the Lord's Prayer to console when the component mounts
-  useEffect(() => {
-    console.log(`
-    Our Father, who art in heaven,
-    hallowed be thy name;
-    thy kingdom come;
-    thy will be done on earth as it is in heaven.
-    Give us this day our daily bread;
-    and forgive us our trespasses
-    as we forgive those who trespass against us;
-    and lead us not into temptation,
-    but deliver us from evil.
-    Amen.
-    `);
-  }, []);
-
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100">
       {/* <!-- "For there is nothing hidden that will not be disclosed, and nothing concealed that will not be known or brought out into the open." - Luke 8:17 --> */}
@@ -214,6 +260,27 @@ function App() {
               >
                 <AlertTriangle className="h-4 w-4" />
                 <span>Threat Manager</span>
+              </button>
+              <button
+                onClick={nodeConnected ? disconnectFromNode : connectToNode}
+                className={`px-3 py-1.5 rounded-md ${
+                  nodeConnected 
+                    ? 'bg-green-600 text-white' 
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                } flex items-center gap-1`}
+                title={nodeConnected ? "Disconnect from Node" : "Connect to Node"}
+              >
+                {nodeConnected ? (
+                  <>
+                    <Wifi className="h-4 w-4" />
+                    <span>Connected</span>
+                  </>
+                ) : (
+                  <>
+                    <WifiOff className="h-4 w-4" />
+                    <span>Connect</span>
+                  </>
+                )}
               </button>
               <button
                 onClick={() => setShowSettings(!showSettings)}
@@ -484,7 +551,7 @@ function App() {
                   : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
               }`}
             >
-              Threat Analysis
+              Behavior Insights
             </button>
             <button
               onClick={() => setActiveTab('decompiler')}
@@ -624,6 +691,40 @@ function App() {
 
           {activeTab === 'threats' && (
             <ThreatManager />
+          )}
+        </div>
+        
+        {/* Node Status Bar */}
+        <div className="mt-6 bg-gray-800 rounded-lg p-3 border border-gray-700 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className={`h-3 w-3 rounded-full ${nodeConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+            <span className="text-sm text-gray-300">
+              {nodeConnected ? 'Connected to blockchain node' : 'Not connected to blockchain node'}
+            </span>
+          </div>
+          
+          {nodeConnected && nodeInfo && (
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-1">
+                <Server className="h-4 w-4 text-gray-400" />
+                <span className="text-sm text-gray-400">{nodeInfo.name}</span>
+              </div>
+              <div className="text-sm text-gray-400">
+                Network: {nodeInfo.network}
+              </div>
+              <div className="text-sm text-gray-400">
+                Block: #{nodeInfo.blockNumber.toLocaleString()}
+              </div>
+            </div>
+          )}
+          
+          {!nodeConnected && (
+            <button
+              onClick={connectToNode}
+              className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+            >
+              Connect
+            </button>
           )}
         </div>
       </main>

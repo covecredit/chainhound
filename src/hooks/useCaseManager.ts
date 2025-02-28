@@ -121,7 +121,7 @@ export function useCaseManager() {
     if (!activeCase) return;
     
     const updatedNotes = activeCase.notes.map(note => 
-      note.id === noteId ? { ...note, content } : note
+      note.id === noteId ? { ...note, content, timestamp: Date.now() } : note
     );
     
     const updatedCase = {

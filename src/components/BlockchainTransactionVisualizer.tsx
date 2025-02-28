@@ -44,11 +44,13 @@ const BlockchainTransactionVisualizer: React.FC<BlockchainTransactionVisualizerP
   const [error, setError] = useState<string | null>(null);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [showLegend, setShowLegend] = useState<boolean>(true);
+  const [lastFetchTime, setLastFetchTime] = useState<number>(0);
   
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const zoomRef = useRef<any>(null);
   const legendRef = useRef<HTMLDivElement>(null);
+  const refreshTimerRef = useRef<number | null>(null);
 
   // Determine transaction type based on transaction data
   const getTransactionType = (tx: Transaction): keyof typeof TRANSACTION_TYPES => {
@@ -129,13 +131,21 @@ const BlockchainTransactionVisualizer: React.FC<BlockchainTransactionVisualizerP
     });
   };
 
-  // Fetch transactions
+  // Fetch transactions with debounce to prevent rapid refreshing
   const fetchTransactions = async () => {
     if (!onFetchTransactions) return;
+    
+    // Prevent fetching more often than every 10 seconds
+    const now = Date.now();
+    if (now - lastFetchTime < 10000) {
+      return;
+    }
     
     try {
       setLoading(true);
       setError(null);
+      setLastFetchTime(now);
+      
       const txs = await onFetchTransactions();
       setTransactions(txs);
       processTransactions(txs);
@@ -156,16 +166,24 @@ const BlockchainTransactionVisualizer: React.FC<BlockchainTransactionVisualizerP
       fetchTransactions();
     }
 
-    let intervalId: number | undefined;
+    // Clean up any existing timer
+    if (refreshTimerRef.current) {
+      window.clearInterval(refreshTimerRef.current);
+      refreshTimerRef.current = null;
+    }
     
-    if (autoRefresh && onFetchTransactions) {
-      intervalId = window.setInterval(() => {
+    // Set up auto-refresh if enabled
+    if (autoRefresh && onFetchTransactions && refreshInterval > 10000) {
+      refreshTimerRef.current = window.setInterval(() => {
         fetchTransactions();
       }, refreshInterval);
     }
 
     return () => {
-      if (intervalId) clearInterval(intervalId);
+      if (refreshTimerRef.current) {
+        window.clearInterval(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
     };
   }, [initialTransactions, onFetchTransactions, autoRefresh, refreshInterval]);
 
@@ -455,6 +473,11 @@ const BlockchainTransactionVisualizer: React.FC<BlockchainTransactionVisualizerP
     }
   };
 
+  // Handle manual refresh button click
+  const handleManualRefresh = () => {
+    fetchTransactions();
+  };
+
   return (
     <div className="bg-gray-800 rounded-lg shadow-lg overflow-hidden border border-gray-700">
       <div className="p-4 border-b border-gray-700">
@@ -505,8 +528,8 @@ const BlockchainTransactionVisualizer: React.FC<BlockchainTransactionVisualizerP
             {onFetchTransactions && (
               <button 
                 className="flex items-center gap-1 px-3 py-1 bg-gray-700 text-gray-200 rounded-md hover:bg-gray-600 transition-colors"
-                onClick={fetchTransactions}
-                disabled={loading}
+                onClick={handleManualRefresh}
+                disabled={loading || (Date.now() - lastFetchTime < 10000)}
               >
                 <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                 <span>Refresh</span>
@@ -540,7 +563,7 @@ const BlockchainTransactionVisualizer: React.FC<BlockchainTransactionVisualizerP
                   <p>No transaction data available to visualize</p>
                   <button 
                     className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                    onClick={fetchTransactions}
+                    onClick={handleManualRefresh}
                   >
                     Fetch Transactions
                   </button>

@@ -305,6 +305,17 @@ const KNOWN_ADDRESSES: Record<string, { label: string, type: 'known' | 'suspicio
     label: 'Bybit Hack - FBI Identified',
     type: 'suspicious',
     country: 'KP'
+  },
+  // Contract addresses
+  '0x96221423681a6d52e184d440a8efcebb105c7242': {
+    label: 'Bybit Hack - Transfer Contract (ta)',
+    type: 'suspicious',
+    country: 'KP'
+  },
+  '0xbdd077f651ebe7f7b3ce16fe5f2b025be2969516': {
+    label: 'Bybit Hack - Destination Contract (da)',
+    type: 'suspicious',
+    country: 'KP'
   }
 };
 

@@ -28,6 +28,7 @@ const ReportGenerator: React.FC = () => {
   const [includeNotes, setIncludeNotes] = useState<boolean>(true);
   const [includeTimeline, setIncludeTimeline] = useState<boolean>(true);
   const [generating, setGenerating] = useState<boolean>(false);
+  const [darkMode, setDarkMode] = useState<boolean>(true);
   
   const labelService = new AddressLabelService();
   
@@ -39,6 +40,56 @@ const ReportGenerator: React.FC = () => {
       setSelectedCase(cases[0]);
     }
   }, [activeCase, cases]);
+  
+  // Function to convert markdown to HTML
+  const markdownToHtml = (markdown: string): string => {
+    if (!markdown) return '';
+    
+    // Process headers
+    let html = markdown
+      .replace(/^# (.*$)/gm, '<h1 class="text-2xl font-bold mb-4">$1</h1>')
+      .replace(/^## (.*$)/gm, '<h2 class="text-xl font-bold mb-3">$1</h2>')
+      .replace(/^### (.*$)/gm, '<h3 class="text-lg font-bold mb-2">$1</h3>')
+      .replace(/^#### (.*$)/gm, '<h4 class="text-md font-bold mb-2">$1</h4>');
+    
+    // Process lists
+    html = html
+      .replace(/^\s*\n\* (.*)/gm, '<ul class="list-disc pl-5 mb-4"><li>$1</li></ul>')
+      .replace(/^\* (.*)/gm, '<li>$1</li>')
+      .replace(/^\s*\n\d+\. (.*)/gm, '<ol class="list-decimal pl-5 mb-4"><li>$1</li></ol>')
+      .replace(/^\d+\. (.*)/gm, '<li>$1</li>');
+    
+    // Fix lists (close tags)
+    html = html
+      .replace(/<\/ul>\s*<li>/g, '<li>')
+      .replace(/<\/ol>\s*<li>/g, '<li>')
+      .replace(/<\/ul>\s*<\/li>/g, '</li></ul>')
+      .replace(/<\/ol>\s*<\/li>/g, '</li></ol>');
+    
+    // Process code blocks
+    html = html
+      .replace(/```([^`]+)```/g, '<pre class="bg-code-bg p-3 rounded-md my-3 overflow-x-auto font-mono text-sm">$1</pre>');
+    
+    // Process inline code
+    html = html.replace(/`([^`]+)`/g, '<code class="bg-code-bg px-1 rounded font-mono text-sm">$1</code>');
+    
+    // Process bold and italic
+    html = html
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    
+    // Process links
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-accent-color hover:underline">$1</a>');
+    
+    // Process paragraphs (must come last)
+    html = html
+      .replace(/^\s*(\n)?(.+)/gm, function(m) {
+        return /^<(\/)?(h\d|ul|ol|li|blockquote|pre|table|tr|th|td)/.test(m) ? m : '<p class="mb-4">' + m + '</p>';
+      })
+      .replace(/<p><\/p>/g, '');
+    
+    return html;
+  };
   
   const generateReport = async () => {
     if (!selectedCase) return;
@@ -60,7 +111,7 @@ const ReportGenerator: React.FC = () => {
       const reportTitle = `ChainHound Forensic Report - ${caseData.name}`;
       const reportFilename = `chainhound-report-${caseData.name.replace(/\s+/g, '-')}-${timestamp}.html`;
       
-      // Generate HTML report
+      // Generate HTML report with dark mode support
       const reportHtml = `
 <!DOCTYPE html>
 <html lang="en">
@@ -69,10 +120,45 @@ const ReportGenerator: React.FC = () => {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${reportTitle}</title>
   <style>
+    :root {
+      ${darkMode ? `
+      --bg-color: #111827;
+      --bg-secondary: #1f2937;
+      --bg-tertiary: #374151;
+      --text-color: #f3f4f6;
+      --text-secondary: #d1d5db;
+      --text-muted: #9ca3af;
+      --border-color: #4b5563;
+      --accent-color: #3b82f6;
+      --accent-secondary: #2563eb;
+      --danger-color: #ef4444;
+      --success-color: #10b981;
+      --warning-color: #f59e0b;
+      --info-box-bg: #1f2937;
+      --code-bg: #111827;
+      ` : `
+      --bg-color: #ffffff;
+      --bg-secondary: #f9fafb;
+      --bg-tertiary: #f3f4f6;
+      --text-color: #111827;
+      --text-secondary: #374151;
+      --text-muted: #6b7280;
+      --border-color: #e5e7eb;
+      --accent-color: #3b82f6;
+      --accent-secondary: #2563eb;
+      --danger-color: #ef4444;
+      --success-color: #10b981;
+      --warning-color: #f59e0b;
+      --info-box-bg: #f9fafb;
+      --code-bg: #f3f4f6;
+      `}
+    }
+    
     body {
       font-family: Arial, sans-serif;
       line-height: 1.6;
-      color: #333;
+      color: var(--text-color);
+      background-color: var(--bg-color);
       max-width: 1200px;
       margin: 0 auto;
       padding: 20px;
@@ -81,27 +167,28 @@ const ReportGenerator: React.FC = () => {
       text-align: center;
       margin-bottom: 30px;
       padding-bottom: 20px;
-      border-bottom: 1px solid #ddd;
+      border-bottom: 1px solid var(--border-color);
     }
     .report-title {
       font-size: 24px;
       font-weight: bold;
       margin-bottom: 10px;
+      color: var(--text-color);
     }
     .report-subtitle {
       font-size: 16px;
-      color: #666;
+      color: var(--text-secondary);
     }
     .section {
       margin-bottom: 30px;
       padding-bottom: 20px;
-      border-bottom: 1px solid #eee;
+      border-bottom: 1px solid var(--border-color);
     }
     .section-title {
       font-size: 20px;
       font-weight: bold;
       margin-bottom: 15px;
-      color: #2563eb;
+      color: var(--accent-color);
     }
     .subsection {
       margin-bottom: 20px;
@@ -110,11 +197,11 @@ const ReportGenerator: React.FC = () => {
       font-size: 18px;
       font-weight: bold;
       margin-bottom: 10px;
-      color: #4b5563;
+      color: var(--text-secondary);
     }
     .info-box {
-      background-color: #f9fafb;
-      border: 1px solid #e5e7eb;
+      background-color: var(--bg-secondary);
+      border: 1px solid var(--border-color);
       border-radius: 5px;
       padding: 15px;
       margin-bottom: 20px;
@@ -126,47 +213,49 @@ const ReportGenerator: React.FC = () => {
       font-weight: bold;
       display: inline-block;
       min-width: 150px;
+      color: var(--text-secondary);
     }
     .address {
       font-family: monospace;
-      background-color: #f3f4f6;
+      background-color: var(--bg-tertiary);
       padding: 2px 5px;
       border-radius: 3px;
+      color: var(--text-color);
     }
     .tag {
       display: inline-block;
-      background-color: #e5e7eb;
-      color: #4b5563;
+      background-color: var(--bg-tertiary);
+      color: var(--text-secondary);
       padding: 2px 8px;
       border-radius: 12px;
       font-size: 12px;
       margin-right: 5px;
     }
     .tag.suspicious {
-      background-color: #fee2e2;
-      color: #b91c1c;
+      background-color: rgba(239, 68, 68, 0.2);
+      color: var(--danger-color);
     }
     .tag.known {
-      background-color: #dbeafe;
-      color: #1e40af;
+      background-color: rgba(59, 130, 246, 0.2);
+      color: var(--accent-color);
     }
     .tag.custom {
-      background-color: #e0e7ff;
-      color: #4338ca;
+      background-color: rgba(139, 92, 246, 0.2);
+      color: #a78bfa;
     }
     .note {
-      background-color: #fffbeb;
-      border-left: 3px solid #f59e0b;
+      background-color: var(--bg-secondary);
+      border-left: 3px solid var(--warning-color);
       padding: 10px 15px;
       margin-bottom: 15px;
     }
     .note-timestamp {
       font-size: 12px;
-      color: #78716c;
+      color: var(--text-muted);
       margin-bottom: 5px;
     }
     .note-content {
-      white-space: pre-wrap;
+      color: var(--text-color);
     }
     .timeline-item {
       display: flex;
@@ -175,22 +264,24 @@ const ReportGenerator: React.FC = () => {
     .timeline-date {
       min-width: 150px;
       font-weight: bold;
+      color: var(--text-secondary);
     }
     .timeline-content {
       flex: 1;
+      color: var(--text-color);
     }
     .alert {
-      background-color: #fee2e2;
-      border-left: 3px solid #dc2626;
+      background-color: rgba(239, 68, 68, 0.1);
+      border-left: 3px solid var(--danger-color);
       padding: 10px 15px;
       margin-bottom: 15px;
-      color: #7f1d1d;
+      color: var(--danger-color);
     }
     .footer {
       margin-top: 50px;
       text-align: center;
       font-size: 12px;
-      color: #6b7280;
+      color: var(--text-muted);
     }
     table {
       width: 100%;
@@ -198,22 +289,23 @@ const ReportGenerator: React.FC = () => {
       margin-bottom: 20px;
     }
     th, td {
-      border: 1px solid #e5e7eb;
+      border: 1px solid var(--border-color);
       padding: 8px 12px;
       text-align: left;
     }
     th {
-      background-color: #f9fafb;
+      background-color: var(--bg-secondary);
       font-weight: bold;
+      color: var(--text-secondary);
     }
     tr:nth-child(even) {
-      background-color: #f9fafb;
+      background-color: var(--bg-secondary);
     }
     .chart-container {
       width: 100%;
       height: 300px;
-      background-color: #f9fafb;
-      border: 1px solid #e5e7eb;
+      background-color: var(--bg-secondary);
+      border: 1px solid var(--border-color);
       border-radius: 5px;
       display: flex;
       align-items: center;
@@ -222,22 +314,53 @@ const ReportGenerator: React.FC = () => {
     }
     .chart-placeholder {
       text-align: center;
-      color: #6b7280;
+      color: var(--text-muted);
     }
     .summary-box {
-      background-color: #eff6ff;
-      border: 1px solid #bfdbfe;
+      background-color: rgba(59, 130, 246, 0.1);
+      border: 1px solid rgba(59, 130, 246, 0.3);
       border-radius: 5px;
       padding: 15px;
       margin-bottom: 20px;
+      color: var(--text-color);
     }
     .warning-box {
-      background-color: #fff7ed;
-      border: 1px solid #fed7aa;
+      background-color: rgba(245, 158, 11, 0.1);
+      border: 1px solid rgba(245, 158, 11, 0.3);
       border-radius: 5px;
       padding: 15px;
       margin-bottom: 20px;
-      color: #9a3412;
+      color: var(--warning-color);
+    }
+    a {
+      color: var(--accent-color);
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    code, pre {
+      font-family: monospace;
+      background-color: var(--code-bg);
+      border-radius: 3px;
+    }
+    pre {
+      padding: 10px;
+      overflow-x: auto;
+    }
+    code {
+      padding: 2px 4px;
+    }
+    ul, ol {
+      padding-left: 20px;
+      margin-bottom: 15px;
+    }
+    li {
+      margin-bottom: 5px;
+    }
+    strong {
+      font-weight: bold;
+      color: var(--text-color);
     }
   </style>
 </head>
@@ -341,8 +464,10 @@ const ReportGenerator: React.FC = () => {
               <td><span class="address">${contract}</span></td>
               <td>${contract === '0x96221423681a6d52e184d440a8efcebb105c7242' ? 
                 'Smart contract associated with the Bybit hack' : 
+                contract === '0xbdd077f651ebe7f7b3ce16fe5f2b025be2969516' ?
+                'Destination contract used in the Bybit hack' :
                 'Smart contract under investigation'}</td>
-              <td>${contract === '0x96221423681a6d52e184d440a8efcebb105c7242' ? 
+              <td>${contract === '0x96221423681a6d52e184d440a8efcebb105c7242' || contract === '0xbdd077f651ebe7f7b3ce16fe5f2b025be2969516' ? 
                 'High Risk - Potentially malicious' : 
                 'Under investigation'}</td>
             </tr>
@@ -384,11 +509,11 @@ const ReportGenerator: React.FC = () => {
       <div class="chart-container">
         <div class="chart-placeholder">
           <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin: 0 auto 10px;">
-            <path d="M21 21H4.6C3.1 21 2 19.9 2 18.4V3" stroke="#6B7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M21 7L15 7" stroke="#6B7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M15 3L15 11" stroke="#6B7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M21 15L12 15" stroke="#6B7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M12 11L12 19" stroke="#6B7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M21 21H4.6C3.1 21 2 19.9 2 18.4V3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M21 7L15 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M15 3L15 11" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M21 15L12 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M12 11L12 19" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
           <p>Transaction flow visualization would appear here in the actual report</p>
         </div>
@@ -413,11 +538,11 @@ const ReportGenerator: React.FC = () => {
       <div class="chart-container">
         <div class="chart-placeholder">
           <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin: 0 auto 10px;">
-            <circle cx="12" cy="12" r="10" stroke="#6B7280" stroke-width="2"/>
-            <path d="M12 2C6.5 2 2 6.5 2 12C2 17.5 6.5 22 12 22" stroke="#6B7280" stroke-width="2" stroke-linecap="round"/>
-            <path d="M12 2C17.5 2 22 6.5 22 12C22 17.5 17.5 22 12 22" stroke="#6B7280" stroke-width="2" stroke-linecap="round"/>
-            <path d="M15 9.5C15 8.12 13.88 7 12.5 7C11.12 7 10 8.12 10 9.5C10 10.88 11.12 12 12.5 12" stroke="#6B7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M12.5 12C11.12 12 10 13.12 10 14.5C10 15.88 11.12 17 12.5 17C13.88 17 15 15.88 15 14.5" stroke="#6B7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+            <path d="M12 2C6.5 2 2 6.5 2 12C2 17.5 6.5 22 12 22" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M12 2C17.5 2 22 6.5 22 12C22 17.5 17.5 22 12 22" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <path d="M15 9.5C15 8.12 13.88 7 12.5 7C11.12 7 10 8.12 10 9.5C10 10.88 11.12 12 12.5 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M12.5 12C11.12 12 10 13.12 10 14.5C10 15.88 11.12 17 12.5 17C13.88 17 15 15.88 15 14.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
           <p>Cross-chain activity distribution chart would appear here in the actual report</p>
         </div>
@@ -442,7 +567,7 @@ const ReportGenerator: React.FC = () => {
       ${caseData.notes.map(note => `
         <div class="note">
           <div class="note-timestamp">${new Date(note.timestamp).toLocaleString()}</div>
-          <div class="note-content">${note.content}</div>
+          <div class="note-content">${markdownToHtml(note.content)}</div>
         </div>
       `).join('')}
     </div>` : ''}
@@ -659,6 +784,16 @@ const ReportGenerator: React.FC = () => {
                   className="rounded text-purple-600 focus:ring-purple-500 h-4 w-4 bg-gray-700 border-gray-600"
                 />
                 <span className="ml-2 text-sm text-gray-300">Include Timeline</span>
+              </label>
+              
+              <label className="flex items-center mt-4 pt-2 border-t border-gray-700">
+                <input
+                  type="checkbox"
+                  checked={darkMode}
+                  onChange={(e) => setDarkMode(e.target.checked)}
+                  className="rounded text-purple-600 focus:ring-purple-500 h-4 w-4 bg-gray-700 border-gray-600"
+                />
+                <span className="ml-2 text-sm text-gray-300">Dark Mode Report</span>
               </label>
             </div>
           </div>

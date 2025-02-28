@@ -71,15 +71,13 @@ const AddressTransactionHistory: React.FC<AddressTransactionHistoryProps> = ({
     return ethValue.toString();
   };
   
-  const getExplorerUrl = (chain: string, hash: string, isAddress: boolean = false) => {
-    // Instead of using external explorers, use ChainHound's own pages
-    if (isAddress) {
-      return `/?address=${hash}`;
-    } else {
-      // For transactions, we could create a transaction detail page in the future
-      // For now, just link to the address history
-      return `/?address=${hash}`;
-    }
+  const handleExternalLinkClick = (e: React.MouseEvent, chain: string, hash: string, isAddress: boolean = false) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Open in a new tab
+    const url = isAddress ? `/?address=${hash}` : `https://etherscan.io/tx/${hash}`;
+    window.open(url, '_blank');
   };
   
   const getCurrencySymbol = (chain: string) => {
@@ -305,7 +303,7 @@ const AddressTransactionHistory: React.FC<AddressTransactionHistoryProps> = ({
             </label>
             <button
               onClick={() => setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')}
-              className="w-full flex items-center justify-center gap-2 rounded-md border border-gray-600 shadow-sm px-3 py-2 bg-gray-700 text-sm text-gray-200 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full flex items-center justify-center gap-2 rounded-md border border-gray-600 shadow-sm px-3 py-2 bg-gray-700 text-sm text-gray-200 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-blue-500"
             >
               <ArrowDownUp className="h-4 w-4" />
               {sortOrder === 'desc' ? 'Newest First' : 'Oldest First'}
@@ -371,7 +369,8 @@ const AddressTransactionHistory: React.FC<AddressTransactionHistoryProps> = ({
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-400">
                       <a 
-                        href={getExplorerUrl(tx.blockchain, tx.hash)} 
+                        href="#"
+                        onClick={(e) => handleExternalLinkClick(e, tx.blockchain, tx.hash)}
                         className="flex items-center gap-1 hover:underline"
                       >
                         {tx.hash}
@@ -383,18 +382,20 @@ const AddressTransactionHistory: React.FC<AddressTransactionHistoryProps> = ({
                     </td>
                     <td className={`px-6 py-4 whitespace-nowrap text-sm ${direction === 'outgoing' ? 'font-semibold text-red-400' : 'text-gray-400'}`}>
                       <a 
-                        href={getExplorerUrl(tx.blockchain, tx.from, true)} 
+                        href="#"
+                        onClick={(e) => handleExternalLinkClick(e, tx.blockchain, tx.from, true)}
                         className="hover:underline"
                       >
-                        <AddressLabel address={tx.from} showEdit={false} />
+                        <AddressLabel address={tx.from} showEdit={false} showFull={true} />
                       </a>
                     </td>
                     <td className={`px-6 py-4 whitespace-nowrap text-sm ${direction === 'incoming' ? 'font-semibold text-green-400' : 'text-gray-400'}`}>
                       <a 
-                        href={getExplorerUrl(tx.blockchain, tx.to, true)} 
+                        href="#"
+                        onClick={(e) => handleExternalLinkClick(e, tx.blockchain, tx.to, true)}
                         className="hover:underline"
                       >
-                        <AddressLabel address={tx.to} showEdit={false} />
+                        <AddressLabel address={tx.to} showEdit={false} showFull={true} />
                       </a>
                     </td>
                     <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${
