@@ -1,22 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Settings as SettingsIcon, Save, RefreshCw, Server, Plus, Trash2, Bug, Shield, AlertTriangle, RotateCcw, Wifi, WifiOff } from 'lucide-react';
+import { Settings as SettingsIcon, Save, RefreshCw, Server, Plus, Trash2, Bug, Shield, AlertTriangle, Database, Upload, Download, RotateCcw } from 'lucide-react';
 import { useWeb3Context } from '../contexts/Web3Context';
+import { blockCache } from '../services/BlockCache';
 
 const Settings = () => {
-  const { 
-    provider, 
-    setProvider, 
-    isConnected, 
-    availableProviders, 
-    debugMode, 
-    setDebugMode,
-    autoReconnect,
-    setAutoReconnect,
-    reconnectProvider,
-    isReconnecting,
-    resetSettings
-  } = useWeb3Context();
-  
+  const { provider, setProvider, isConnected, availableProviders, debugMode, setDebugMode, autoReconnect, setAutoReconnect, resetSettings, exportCache, importCache } = useWeb3Context();
   const [web3Provider, setWeb3Provider] = useState(provider);
   const [customProviders, setCustomProviders] = useState<string[]>([]);
   const [newCustomProvider, setNewCustomProvider] = useState('');
@@ -25,12 +13,21 @@ const Settings = () => {
   const [refreshInterval, setRefreshInterval] = useState(30);
   const [darkMode, setDarkMode] = useState(true); // Default to dark mode
   const [isSaving, setIsSaving] = useState(false);
-  const [isResetting, setIsResetting] = useState(false);
   const [saveMessage, setSaveMessage] = useState({ type: '', text: '' });
   const [localDebugMode, setLocalDebugMode] = useState(debugMode);
   const [localAutoReconnect, setLocalAutoReconnect] = useState(autoReconnect);
   const [secureConnectionsOnly, setSecureConnectionsOnly] = useState(true);
+  const [cacheStats, setCacheStats] = useState({
+    totalBlocks: 0,
+    oldestBlock: undefined as number | undefined,
+    newestBlock: undefined as number | undefined,
+    sizeEstimate: '0 B'
+  });
+  const [isExportingCache, setIsExportingCache] = useState(false);
+  const [isImportingCache, setIsImportingCache] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Load custom providers from localStorage
   useEffect(() => {
@@ -71,9 +68,18 @@ const Settings = () => {
       setSecureConnectionsOnly(savedSecureConnectionsOnly === 'true');
     }
     
-    // Load auto-reconnect setting
-    setLocalAutoReconnect(autoReconnect);
-  }, [autoReconnect, debugMode]);
+    // Load cache stats
+    loadCacheStats();
+  }, []);
+  
+  const loadCacheStats = async () => {
+    try {
+      const stats = await blockCache.getCacheStats();
+      setCacheStats(stats);
+    } catch (error) {
+      console.error('Failed to load cache stats:', error);
+    }
+  };
   
   const applyDarkMode = (enabled: boolean) => {
     if (enabled) {
@@ -116,7 +122,7 @@ const Settings = () => {
       // Apply debug mode
       setDebugMode(localDebugMode);
       
-      // Apply auto-reconnect setting
+      // Apply auto-reconnect
       setAutoReconnect(localAutoReconnect);
       
       setSaveMessage({ type: 'success', text: 'Settings saved successfully!' });
@@ -132,59 +138,6 @@ const Settings = () => {
           setSaveMessage({ type: '', text: '' });
         }, 3000);
       }
-    }
-  };
-  
-  const handleResetSettings = async () => {
-    setIsResetting(true);
-    setSaveMessage({ type: '', text: '' });
-    
-    try {
-      await resetSettings();
-      
-      // Update local state to match reset values
-      setWeb3Provider(localStorage.getItem('chainhound_provider') || '');
-      setLocalAutoReconnect(localStorage.getItem('chainhound_auto_reconnect') !== 'false');
-      setLocalDebugMode(localStorage.getItem('chainhound_debug_mode') === 'true');
-      setSecureConnectionsOnly(localStorage.getItem('chainhound_secure_connections_only') !== 'false');
-      setRefreshInterval(parseInt(localStorage.getItem('chainhound_refresh_interval') || '30', 10));
-      setAutoRefresh(localStorage.getItem('chainhound_auto_refresh') !== 'false');
-      
-      // Update dark mode based on system preference
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      setDarkMode(prefersDark);
-      
-      setSaveMessage({ type: 'success', text: 'Settings reset to defaults successfully!' });
-      setShowResetConfirm(false);
-    } catch (error: any) {
-      console.error('Error resetting settings:', error);
-      setSaveMessage({ type: 'error', text: error.message || 'Failed to reset settings.' });
-    } finally {
-      setIsResetting(false);
-      
-      // Clear success message after 3 seconds
-      if (saveMessage.type === 'success') {
-        setTimeout(() => {
-          setSaveMessage({ type: '', text: '' });
-        }, 3000);
-      }
-    }
-  };
-  
-  const handleManualReconnect = async () => {
-    setSaveMessage({ type: '', text: '' });
-    
-    try {
-      await reconnectProvider();
-      setSaveMessage({ type: 'success', text: 'Successfully reconnected to provider!' });
-      
-      // Clear success message after 3 seconds
-      setTimeout(() => {
-        setSaveMessage({ type: '', text: '' });
-      }, 3000);
-    } catch (error: any) {
-      console.error('Error reconnecting:', error);
-      setSaveMessage({ type: 'error', text: error.message || 'Failed to reconnect to provider.' });
     }
   };
   
@@ -226,6 +179,77 @@ const Settings = () => {
     return url.startsWith('https://') || url.startsWith('wss://');
   };
   
+  const handleExportCache = async () => {
+    setIsExportingCache(true);
+    try {
+      await exportCache();
+      setSaveMessage({ type: 'success', text: 'Cache exported successfully!' });
+    } catch (error: any) {
+      setSaveMessage({ type: 'error', text: error.message || 'Failed to export cache.' });
+    } finally {
+      setIsExportingCache(false);
+    }
+  };
+  
+  const handleFileInputClick = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+  
+  const handleImportCache = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    setIsImportingCache(true);
+    try {
+      await importCache(file);
+      await loadCacheStats();
+      setSaveMessage({ type: 'success', text: 'Cache imported successfully!' });
+    } catch (error: any) {
+      setSaveMessage({ type: 'error', text: error.message || 'Failed to import cache.' });
+    } finally {
+      setIsImportingCache(false);
+      
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+  
+  const handleClearCache = async () => {
+    if (confirm('Are you sure you want to clear the block cache? This cannot be undone.')) {
+      try {
+        await blockCache.clearCache();
+        await loadCacheStats();
+        setSaveMessage({ type: 'success', text: 'Cache cleared successfully!' });
+      } catch (error: any) {
+        setSaveMessage({ type: 'error', text: error.message || 'Failed to clear cache.' });
+      }
+    }
+  };
+  
+  const handleResetSettings = async () => {
+    setIsResetting(true);
+    try {
+      await resetSettings();
+      
+      // Update local state
+      setWeb3Provider(provider);
+      setLocalDebugMode(debugMode);
+      setLocalAutoReconnect(autoReconnect);
+      setDarkMode(document.documentElement.classList.contains('dark'));
+      
+      setSaveMessage({ type: 'success', text: 'Settings reset to defaults!' });
+    } catch (error: any) {
+      setSaveMessage({ type: 'error', text: error.message || 'Failed to reset settings.' });
+    } finally {
+      setIsResetting(false);
+      setShowResetConfirm(false);
+    }
+  };
+  
   return (
     <div className="space-y-6">
       <div className="bg-white p-6 rounded-lg shadow-md dark:bg-gray-800 dark:text-white">
@@ -259,20 +283,6 @@ const Settings = () => {
                 <label htmlFor="secureConnectionsOnly" className="ml-2 flex items-center text-sm text-gray-700 dark:text-gray-300">
                   <Shield className="h-4 w-4 mr-1 text-green-600" />
                   Use secure connections only (HTTPS/WSS)
-                </label>
-              </div>
-              
-              <div className="flex items-center mb-2">
-                <input 
-                  type="checkbox"
-                  id="autoReconnect"
-                  checked={localAutoReconnect}
-                  onChange={(e) => setLocalAutoReconnect(e.target.checked)}
-                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600"
-                />
-                <label htmlFor="autoReconnect" className="ml-2 flex items-center text-sm text-gray-700 dark:text-gray-300">
-                  <Wifi className="h-4 w-4 mr-1 text-green-600" />
-                  Auto-reconnect when connection is lost
                 </label>
               </div>
               
@@ -314,23 +324,6 @@ const Settings = () => {
                   <span className="text-sm">
                     {isConnected ? 'Connected to provider' : 'Not connected to provider'}
                   </span>
-                  <button
-                    onClick={handleManualReconnect}
-                    disabled={isReconnecting}
-                    className="ml-3 text-xs bg-indigo-600 text-white px-2 py-1 rounded hover:bg-indigo-700 transition flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isReconnecting ? (
-                      <>
-                        <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
-                        Reconnecting...
-                      </>
-                    ) : (
-                      <>
-                        <RefreshCw className="h-3 w-3 mr-1" />
-                        Reconnect Now
-                      </>
-                    )}
-                  </button>
                 </div>
               </div>
               
@@ -404,6 +397,20 @@ const Settings = () => {
                   For enhanced transaction data and history
                 </p>
               </div>
+              
+              <div className="flex items-center">
+                <input 
+                  type="checkbox"
+                  id="autoReconnect"
+                  checked={localAutoReconnect}
+                  onChange={(e) => setLocalAutoReconnect(e.target.checked)}
+                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600"
+                />
+                <label htmlFor="autoReconnect" className="ml-2 flex items-center text-sm text-gray-700 dark:text-gray-300">
+                  <RefreshCw className="h-4 w-4 mr-1 text-indigo-600" />
+                  Automatically reconnect when connection is lost
+                </label>
+              </div>
             </div>
           </div>
           
@@ -472,65 +479,127 @@ const Settings = () => {
           </div>
           
           <div>
-            <h2 className="text-lg font-semibold mb-4">Service Worker</h2>
+            <h2 className="text-lg font-semibold mb-4">Block Cache Management</h2>
             <div className="p-4 bg-gray-50 rounded-lg border dark:bg-gray-700 dark:border-gray-600">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <RefreshCw className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Cache Statistics</h3>
+                  <div className="space-y-1 text-sm text-gray-600 dark:text-gray-400">
+                    <p>Total blocks: <span className="font-medium">{cacheStats.totalBlocks.toLocaleString()}</span></p>
+                    {cacheStats.oldestBlock && cacheStats.newestBlock && (
+                      <p>Block range: <span className="font-medium">{cacheStats.oldestBlock.toLocaleString()} - {cacheStats.newestBlock.toLocaleString()}</span></p>
+                    )}
+                    <p>Estimated size: <span className="font-medium">{cacheStats.sizeEstimate}</span></p>
+                  </div>
                 </div>
-                <div className="ml-3">
-                  <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">Background Updates</h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    Service worker is active and will update blockchain data in the background.
-                  </p>
+                
+                <div className="flex flex-col gap-2">
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={handleExportCache}
+                      disabled={isExportingCache || cacheStats.totalBlocks === 0}
+                      className={`flex items-center justify-center px-3 py-2 text-sm rounded ${cacheStats.totalBlocks === 0 ? 'bg-gray-300 text-gray-500 cursor-not-allowed dark:bg-gray-600 dark:text-gray-400' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}
+                    >
+                      {isExportingCache ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
+                          Exporting...
+                        </>
+                      ) : (
+                        <>
+                          <Download className="h-4 w-4 mr-1" />
+                          Export Cache
+                        </>
+                      )}
+                    </button>
+                    
+                    <button 
+                      onClick={handleFileInputClick}
+                      disabled={isImportingCache}
+                      className="bg-indigo-600 text-white px-3 py-2 rounded hover:bg-indigo-700 text-sm flex items-center justify-center"
+                    >
+                      {isImportingCache ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
+                          Importing...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="h-4 w-4 mr-1" />
+                          Import Cache
+                        </>
+                      )}
+                    </button>
+                    <input 
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleImportCache}
+                      accept=".json"
+                      className="hidden"
+                    />
+                  </div>
+                  
+                  <button 
+                    onClick={handleClearCache}
+                    disabled={cacheStats.totalBlocks === 0}
+                    className={`flex items-center justify-center px-3 py-2 text-sm rounded ${cacheStats.totalBlocks === 0 ? 'bg-gray-300 text-gray-500 cursor-not-allowed dark:bg-gray-600 dark:text-gray-400' : 'bg-red-600 text-white hover:bg-red-700'}`}
+                  >
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    Clear Cache
+                  </button>
                 </div>
+              </div>
+              
+              <div className="mt-4 text-xs text-gray-500 dark:text-gray-400 flex items-start">
+                <Database className="h-3 w-3 mr-1 mt-0.5 flex-shrink-0" />
+                <p>
+                  Block cache stores blockchain data locally to improve performance and reduce network requests.
+                  Exported cache files can be shared between devices or saved as backups.
+                </p>
               </div>
             </div>
           </div>
           
           <div className="flex justify-between">
             <div>
-              {showResetConfirm ? (
-                <div className="bg-red-50 p-3 rounded-lg dark:bg-red-900/30 flex flex-col">
-                  <p className="text-sm text-red-700 dark:text-red-300 mb-2">
-                    Are you sure you want to reset all settings to defaults?
-                  </p>
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={handleResetSettings}
-                      disabled={isResetting}
-                      className="bg-red-600 text-white py-1 px-3 rounded hover:bg-red-700 transition text-sm flex items-center"
-                    >
-                      {isResetting ? (
-                        <>
-                          <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
-                          Resetting...
-                        </>
-                      ) : (
-                        <>
-                          <RotateCcw className="h-3 w-3 mr-1" />
-                          Yes, Reset All
-                        </>
-                      )}
-                    </button>
-                    <button
-                      onClick={() => setShowResetConfirm(false)}
-                      className="bg-gray-200 text-gray-700 py-1 px-3 rounded hover:bg-gray-300 transition text-sm dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button
+              {!showResetConfirm ? (
+                <button 
                   onClick={() => setShowResetConfirm(true)}
                   className="bg-gray-200 text-gray-700 py-2 px-4 rounded hover:bg-gray-300 transition flex items-center dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
                 >
                   <RotateCcw className="h-4 w-4 mr-1" />
-                  Reset to Defaults
+                  <span>Reset to Defaults</span>
                 </button>
+              ) : (
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm text-red-600 dark:text-red-400">Confirm reset?</span>
+                  <button 
+                    onClick={handleResetSettings}
+                    disabled={isResetting}
+                    className="bg-red-600 text-white py-1 px-3 rounded hover:bg-red-700 transition text-sm flex items-center"
+                  >
+                    {isResetting ? (
+                      <>
+                        <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                        <span>Resetting...</span>
+                      </>
+                    ) : (
+                      <>
+                        <RotateCcw className="h-3 w-3 mr-1" />
+                        <span>Yes, Reset</span>
+                      </>
+                    )}
+                  </button>
+                  <button 
+                    onClick={() => setShowResetConfirm(false)}
+                    className="bg-gray-200 text-gray-700 py-1 px-3 rounded hover:bg-gray-300 transition text-sm dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+                  >
+                    Cancel
+                  </button>
+                </div>
               )}
             </div>
+            
             <button 
               onClick={handleSave}
               disabled={isSaving}

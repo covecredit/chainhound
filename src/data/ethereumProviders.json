@@ -1,167 +1,72 @@
 [
   {
-    "name": "eth.llamarpc.com (HTTPS)",
+    "name": "LlamaRPC (HTTPS)",
     "url": "https://eth.llamarpc.com",
     "network": "mainnet"
   },
   {
-    "name": "ethereum.rpc.subquery.network (HTTPS)",
-    "url": "https://ethereum.rpc.subquery.network/public",
+    "name": "Cloudflare (HTTPS)",
+    "url": "https://cloudflare-eth.com",
     "network": "mainnet"
   },
   {
-    "name": "virginia.rpc.blxrbdn.com (HTTPS)",
-    "url": "https://virginia.rpc.blxrbdn.com",
-    "network": "mainnet"
-  },
-  {
-    "name": "singapore.rpc.blxrbdn.com (HTTPS)",
-    "url": "https://singapore.rpc.blxrbdn.com",
-    "network": "mainnet"
-  },
-  {
-    "name": "eth1.lava.build (HTTPS)",
-    "url": "https://eth1.lava.build",
-    "network": "mainnet"
-  },
-  {
-    "name": "core.gashawk.io (HTTPS)",
-    "url": "https://core.gashawk.io/rpc",
-    "network": "mainnet"
-  },
-  {
-    "name": "eth.meowrpc.com (HTTPS)",
-    "url": "https://eth.meowrpc.com",
-    "network": "mainnet"
-  },
-  {
-    "name": "api.securerpc.com (HTTPS)",
-    "url": "https://api.securerpc.com/v1",
-    "network": "mainnet"
-  },
-  {
-    "name": "eth-mainnet.nodereal.io (HTTPS)",
-    "url": "https://eth-mainnet.nodereal.io/v1/1659dfb40aa24bbb8153a677b98064d7",
-    "network": "mainnet"
-  },
-  {
-    "name": "ethereum.blockpi.network (HTTPS)",
-    "url": "https://ethereum.blockpi.network/v1/rpc/public",
-    "network": "mainnet"
-  },
-  {
-    "name": "eth.drpc.org (HTTPS)",
-    "url": "https://eth.drpc.org",
-    "network": "mainnet"
-  },
-  {
-    "name": "mainnet.gateway.tenderly.co (HTTPS)",
-    "url": "https://mainnet.gateway.tenderly.co",
-    "network": "mainnet"
-  },
-  {
-    "name": "eth.blockrazor.xyz (HTTPS)",
-    "url": "https://eth.blockrazor.xyz",
-    "network": "mainnet"
-  },
-  {
-    "name": "rpc.payload.de (HTTPS)",
-    "url": "https://rpc.payload.de",
-    "network": "mainnet"
-  },
-  {
-    "name": "ethereum-rpc.publicnode.com (HTTPS)",
-    "url": "https://ethereum-rpc.publicnode.com",
-    "network": "mainnet"
-  },
-  {
-    "name": "rpc.flashbots.net (HTTPS)",
-    "url": "https://rpc.flashbots.net",
-    "network": "mainnet"
-  },
-  {
-    "name": "rpc.flashbots.net/fast (HTTPS)",
-    "url": "https://rpc.flashbots.net/fast",
-    "network": "mainnet"
-  },
-  {
-    "name": "endpoints.omniatech.io (HTTPS)",
-    "url": "https://endpoints.omniatech.io/v1/eth/mainnet/public",
-    "network": "mainnet"
-  },
-  {
-    "name": "api.zan.top (HTTPS)",
-    "url": "https://api.zan.top/eth-mainnet",
-    "network": "mainnet"
-  },
-  {
-    "name": "rpc.mevblocker.io (HTTPS)",
-    "url": "https://rpc.mevblocker.io",
-    "network": "mainnet"
-  },
-  {
-    "name": "rpc.graffiti.farm (HTTPS)",
-    "url": "https://rpc.graffiti.farm",
-    "network": "mainnet"
-  },
-  {
-    "name": "rpc.ankr.com/eth (HTTPS)",
+    "name": "Ankr (HTTPS)",
     "url": "https://rpc.ankr.com/eth",
     "network": "mainnet"
   },
   {
-    "name": "eth-pokt.nodies.app (HTTPS)",
-    "url": "https://eth-pokt.nodies.app",
+    "name": "1RPC (HTTPS)",
+    "url": "https://1rpc.io/eth",
     "network": "mainnet"
   },
   {
-    "name": "eth.rpc.blxrbdn.com (HTTPS)",
-    "url": "https://eth.rpc.blxrbdn.com",
-    "network": "mainnet"
-  },
-  {
-    "name": "uk.rpc.blxrbdn.com (HTTPS)",
-    "url": "https://uk.rpc.blxrbdn.com",
-    "network": "mainnet"
-  },
-  {
-    "name": "eth-mainnet.public.blastapi.io (HTTPS)",
+    "name": "Blast API (HTTPS)",
     "url": "https://eth-mainnet.public.blastapi.io",
     "network": "mainnet"
   },
   {
-    "name": "gateway.tenderly.co/public/mainnet (HTTPS)",
-    "url": "https://gateway.tenderly.co/public/mainnet",
+    "name": "Alchemy (HTTPS)",
+    "url": "https://eth-mainnet.g.alchemy.com/v2/demo",
     "network": "mainnet"
   },
   {
-    "name": "eth.merkle.io (HTTPS)",
-    "url": "https://eth.merkle.io",
+    "name": "Infura (HTTPS)",
+    "url": "https://mainnet.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161",
     "network": "mainnet"
   },
   {
-    "name": "rpc.mevblocker.io/noreverts (HTTPS)",
-    "url": "https://rpc.mevblocker.io/noreverts",
+    "name": "Pocket Network (HTTPS)",
+    "url": "https://eth-mainnet.gateway.pokt.network/v1/lb/627586ddea1b320039c95205",
     "network": "mainnet"
   },
   {
-    "name": "eth.drpc.org (WSS)",
-    "url": "wss://eth.drpc.org",
+    "name": "PublicNode (HTTPS)",
+    "url": "https://ethereum-rpc.publicnode.com",
     "network": "mainnet"
   },
   {
-    "name": "mainnet.gateway.tenderly.co (WSS)",
-    "url": "wss://mainnet.gateway.tenderly.co",
+    "name": "Tenderly (HTTPS)",
+    "url": "https://mainnet.gateway.tenderly.co",
     "network": "mainnet"
   },
   {
-    "name": "ethereum-rpc.publicnode.com (WSS)",
-    "url": "wss://ethereum-rpc.publicnode.com",
+    "name": "BlockPI (HTTPS)",
+    "url": "https://ethereum.blockpi.network/v1/rpc/public",
     "network": "mainnet"
   },
   {
-    "name": "ws-rpc.graffiti.farm (WSS)",
-    "url": "wss://ws-rpc.graffiti.farm",
+    "name": "Drpc (HTTPS)",
+    "url": "https://eth.drpc.org",
     "network": "mainnet"
+  },
+  {
+    "name": "Sepolia Testnet (HTTPS)",
+    "url": "https://rpc.sepolia.org",
+    "network": "sepolia"
+  },
+  {
+    "name": "Goerli Testnet (HTTPS)",
+    "url": "https://rpc.ankr.com/eth_goerli",
+    "network": "goerli"
   }
 ]

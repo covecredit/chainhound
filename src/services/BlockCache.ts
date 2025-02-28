@@ -150,6 +150,23 @@ class BlockCache {
   }
 
   /**
+   * Get all blocks from the cache
+   */
+  async getAllBlocks(): Promise<Block[]> {
+    if (!this.isInitialized) {
+      await this.dbPromise;
+    }
+    
+    try {
+      const db = await this.dbPromise;
+      return await db.getAll(this.STORE_NAME);
+    } catch (error) {
+      console.error('Failed to get all blocks from cache:', error);
+      return [];
+    }
+  }
+
+  /**
    * Check which blocks in a range are already cached
    * Returns an array of block numbers that are cached
    */

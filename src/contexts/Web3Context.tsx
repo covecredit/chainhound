@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import Web3 from 'web3';
 import ethereumProviders from '../data/ethereumProviders.json';
+import { blockCache } from '../services/BlockCache';
 
 // Import Ethereum providers from JSON file
 export const ETHEREUM_PROVIDERS = ethereumProviders;
@@ -39,6 +40,8 @@ interface Web3ContextType {
   reconnectProvider: () => Promise<void>;
   isReconnecting: boolean;
   resetSettings: () => Promise<void>;
+  exportCache: () => Promise<void>;
+  importCache: (file: File) => Promise<void>;
 }
 
 const Web3Context = createContext<Web3ContextType | undefined>(undefined);
@@ -59,7 +62,7 @@ const getDefaultProvider = (): string => {
   return secureWsProvider?.url || secureHttpProvider?.url || DEFAULT_SETTINGS.provider;
 };
 
-export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) => {
+export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [web3, setWeb3] = useState<Web3 | null>(null);
   const [provider, setProviderUrl] = useState<string>(
     localStorage.getItem('chainhound_provider') || getDefaultProvider()
@@ -74,10 +77,12 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
   );
   const [isReconnecting, setIsReconnecting] = useState<boolean>(false);
   const [reconnectAttempts, setReconnectAttempts] = useState<number>(0);
-  const [reconnectTimer, setReconnectTimer] = useState<NodeJS.Timeout | null>(null);
+  const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
   const maxReconnectAttempts = 5;
   const requestTimeoutRef = useRef<Map<string, number>>(new Map());
   const retryRequestsRef = useRef<Map<string, { retries: number, maxRetries: number }>>(new Map());
+  const currentProviderRef = useRef<string>(provider);
+  const web3InstanceRef = useRef<Web3 | null>(null);
 
   const logDebug = (message: string, ...args: any[]) => {
     if (debugMode) {
@@ -204,22 +209,21 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setReconnectAttempts(prev => prev + 1);
     
     // Clear any existing reconnect timer
-    if (reconnectTimer) {
-      clearTimeout(reconnectTimer);
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
     }
     
     // Exponential backoff for reconnect attempts
     const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
     logDebug(`Scheduling reconnect attempt ${reconnectAttempts + 1} in ${delay}ms`);
     
-    const timer = setTimeout(() => {
+    reconnectTimerRef.current = setTimeout(() => {
       logDebug(`Attempting to reconnect (attempt ${reconnectAttempts + 1}/${maxReconnectAttempts})...`);
       reconnectProvider().finally(() => {
         setIsReconnecting(false);
       });
     }, delay);
-    
-    setReconnectTimer(timer);
   };
 
   // Custom provider with retry logic for timeouts
@@ -286,10 +290,51 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return new RetryingHttpProvider(url, options);
   };
 
+  // Clean up all active connections and timeouts
+  const cleanupConnections = () => {
+    logDebug('Cleaning up connections and timeouts');
+    
+    // Clear all request timeouts
+    requestTimeoutRef.current.forEach((timeoutId) => {
+      clearTimeout(timeoutId);
+    });
+    requestTimeoutRef.current.clear();
+    
+    // Clear reconnect timer
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    
+    // Clear retry tracking
+    retryRequestsRef.current.clear();
+    
+    // Close WebSocket connection if applicable
+    if (web3InstanceRef.current && 
+        web3InstanceRef.current.currentProvider && 
+        typeof (web3InstanceRef.current.currentProvider as any).disconnect === 'function') {
+      try {
+        (web3InstanceRef.current.currentProvider as any).disconnect();
+        logDebug('WebSocket connection closed');
+      } catch (error) {
+        logDebug('Error closing WebSocket connection:', error);
+      }
+    }
+  };
+
   const setProvider = async (url: string) => {
     try {
+      // Skip if the provider URL hasn't changed
+      if (url === currentProviderRef.current && web3InstanceRef.current) {
+        logDebug('Provider URL unchanged, skipping reconnection');
+        return;
+      }
+      
       logDebug(`Setting provider to: ${url}`);
       const startTime = performance.now();
+      
+      // Clean up existing connections
+      cleanupConnections();
       
       // Ensure we're using secure connections when possible
       let secureUrl = url;
@@ -321,22 +366,8 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
         // Create a custom provider that works around CORS issues
         logDebug('Creating HTTP provider with CORS handling...');
         
-        // Use a CORS proxy for deployed environments
-        const isDeployedEnvironment = !window.location.hostname.includes('localhost') && 
-                                     !window.location.hostname.includes('127.0.0.1');
-        
-        // Always use CORS proxy to avoid CORS issues
-        const shouldUseProxy = true;
-        const finalUrl = shouldUseProxy ? 
-          `https://corsproxy.io/?${encodeURIComponent(secureUrl)}` : 
-          secureUrl;
-        
-        if (shouldUseProxy) {
-          logDebug(`Using CORS proxy for provider: ${finalUrl}`);
-        }
-        
         // Create custom HTTP provider with retry logic
-        const httpProvider = createCustomProvider(finalUrl, {
+        const httpProvider = createCustomProvider(secureUrl, {
           timeout: 30000,
           withCredentials: false,
           headers: [
@@ -354,6 +385,10 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
       logDebug('Testing connection...');
       const blockNumber = await newWeb3.eth.getBlockNumber();
       logDebug(`Connection successful. Current block: ${blockNumber}`);
+      
+      // Update refs and state
+      web3InstanceRef.current = newWeb3;
+      currentProviderRef.current = secureUrl;
       
       setWeb3(newWeb3);
       setProviderUrl(secureUrl);
@@ -384,7 +419,7 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setIsReconnecting(true);
     try {
       logDebug('Manually reconnecting to provider...');
-      await setProvider(provider);
+      await setProvider(currentProviderRef.current);
       logDebug('Reconnection successful');
     } catch (error) {
       logDebug('Manual reconnection failed:', error);
@@ -426,6 +461,78 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  // Export cache to a file
+  const exportCache = async () => {
+    try {
+      logDebug('Exporting block cache...');
+      const stats = await blockCache.getCacheStats();
+      
+      if (stats.totalBlocks === 0) {
+        throw new Error('No blocks in cache to export');
+      }
+      
+      // Get all blocks from the cache
+      const blocks = await blockCache.getAllBlocks();
+      
+      // Create a JSON file
+      const blob = new Blob([JSON.stringify(blocks)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      
+      // Create a download link
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `chainhound-block-cache-${Date.now()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      
+      // Clean up
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      logDebug(`Successfully exported ${blocks.length} blocks`);
+    } catch (error) {
+      logDebug('Failed to export cache:', error);
+      console.error('Failed to export cache:', error);
+      throw error;
+    }
+  };
+
+  // Import cache from a file
+  const importCache = async (file: File) => {
+    try {
+      logDebug('Importing block cache...');
+      
+      // Read the file
+      const text = await file.text();
+      const blocks = JSON.parse(text);
+      
+      if (!Array.isArray(blocks)) {
+        throw new Error('Invalid cache file format');
+      }
+      
+      // Validate blocks
+      const validBlocks = blocks.filter(block => 
+        block && 
+        typeof block === 'object' && 
+        typeof block.number === 'number' && 
+        typeof block.hash === 'string'
+      );
+      
+      if (validBlocks.length === 0) {
+        throw new Error('No valid blocks found in the cache file');
+      }
+      
+      // Import blocks to the cache
+      await blockCache.cacheBlocks(validBlocks);
+      
+      logDebug(`Successfully imported ${validBlocks.length} blocks`);
+    } catch (error) {
+      logDebug('Failed to import cache:', error);
+      console.error('Failed to import cache:', error);
+      throw error;
+    }
+  };
+
   // Update debug mode setting
   const toggleDebugMode = (enabled: boolean) => {
     setDebugMode(enabled);
@@ -436,14 +543,14 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // Set up connection status monitoring
   useEffect(() => {
     const checkConnection = async () => {
-      if (!web3) return;
+      if (!web3InstanceRef.current) return;
       
       try {
-        await web3.eth.getBlockNumber();
+        await web3InstanceRef.current.eth.getBlockNumber();
         if (!isConnected) {
           logDebug('Connection restored');
           setIsConnected(true);
-          updateNetworkInfo(web3);
+          updateNetworkInfo(web3InstanceRef.current);
         }
       } catch (error) {
         if (isConnected) {
@@ -462,7 +569,7 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const intervalId = setInterval(checkConnection, 10000); // Check every 10 seconds
     
     return () => clearInterval(intervalId);
-  }, [web3, isConnected, autoReconnect, reconnectAttempts]);
+  }, [isConnected, autoReconnect, reconnectAttempts]);
 
   // Initialize Web3 with the saved provider
   useEffect(() => {
@@ -487,18 +594,16 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
     
     // Set up periodic network info updates
     const intervalId = setInterval(() => {
-      if (web3 && isConnected) {
+      if (web3InstanceRef.current && isConnected) {
         logDebug('Running periodic network info update');
-        updateNetworkInfo(web3);
+        updateNetworkInfo(web3InstanceRef.current);
       }
     }, 30000); // Update every 30 seconds
     
     // Clean up on unmount
     return () => {
       clearInterval(intervalId);
-      if (reconnectTimer) {
-        clearTimeout(reconnectTimer);
-      }
+      cleanupConnections();
     };
   }, []);
 
@@ -516,7 +621,9 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setAutoReconnect,
       reconnectProvider,
       isReconnecting,
-      resetSettings
+      resetSettings,
+      exportCache,
+      importCache
     }}>
       {children}
     </Web3Context.Provider>

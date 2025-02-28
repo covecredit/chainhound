@@ -4,6 +4,7 @@ import * as d3 from 'd3';
 import { toPng } from 'html-to-image';
 import TransactionGraph from '../components/TransactionGraph';
 import TransactionTimeline from '../components/TransactionTimeline';
+import TransactionLegend from '../components/TransactionLegend';
 import { useWeb3Context } from '../contexts/Web3Context';
 import { blockCache } from '../services/BlockCache';
 import { safelyConvertBigIntToString } from '../utils/bigIntUtils';
@@ -568,48 +569,23 @@ const TransactionViewer = () => {
     localStorage.setItem('chainhound_search_options', JSON.stringify(newOptions));
   };
   
-  const captureScreenshot = async (fullGraph = false) => {
+  const captureScreenshot = async () => {
     if (!graphRef.current) return;
     
     try {
-      // Get the current theme
-      const isDarkMode = document.documentElement.classList.contains('dark');
-      
       const dataUrl = await toPng(graphRef.current, {
         quality: 0.95,
-        backgroundColor: isDarkMode ? '#1f2937' : 'white',
+        backgroundColor: 'white',
         style: {
           margin: '20px'
         }
       });
       
-      // Create a watermark
-      const canvas = document.createElement('canvas');
-      const img = new Image();
-      
-      img.onload = () => {
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-        
-        // Draw the original image
-        ctx.drawImage(img, 0, 0);
-        
-        // Add watermark
-        ctx.font = '20px Arial';
-        ctx.fillStyle = isDarkMode ? 'rgba(200, 200, 200, 0.5)' : 'rgba(150, 150, 150, 0.5)';
-        ctx.textAlign = 'center';
-        ctx.fillText('ChainHound', canvas.width / 2, canvas.height - 20);
-        
-        // Create download link
-        const link = document.createElement('a');
-        link.download = `chainhound-${fullGraph ? 'full-graph' : 'visible-area'}-${Date.now()}.png`;
-        link.href = canvas.toDataURL('image/png');
-        link.click();
-      };
-      
-      img.src = dataUrl;
+      // Create a download link
+      const link = document.createElement('a');
+      link.download = `chainhound-graph-${Date.now()}.png`;
+      link.href = dataUrl;
+      link.click();
     } catch (error) {
       console.error('Error capturing screenshot:', error);
     }
@@ -655,7 +631,7 @@ const TransactionViewer = () => {
   
   // Helper to display max blocks/transactions value
   const displayMaxValue = (value: number, maxValue: number) => {
-    return value >= maxValue ? "10,000 (Max)" : value.toString();
+    return value >= maxValue ? "Unlimited" : value.toString();
   };
   
   return (
@@ -767,6 +743,9 @@ const TransactionViewer = () => {
                         <span>Max blocks to scan: </span>
                         <span className="ml-1 flex items-center">
                           {displayMaxValue(searchOptions.maxBlocks, MAX_BLOCKS)}
+                          {searchOptions.maxBlocks >= MAX_BLOCKS && (
+                            <Infinity className="h-4 w-4 ml-1 text-indigo-600 dark:text-indigo-400" />
+                          )}
                         </span>
                       </label>
                       <input 
@@ -781,7 +760,7 @@ const TransactionViewer = () => {
                       <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
                         <span>100</span>
                         <span>5000</span>
-                        <span>10000</span>
+                        <span>Unlimited</span>
                       </div>
                     </div>
                     
@@ -790,6 +769,9 @@ const TransactionViewer = () => {
                         <span>Max transactions: </span>
                         <span className="ml-1 flex items-center">
                           {displayMaxValue(searchOptions.maxTransactions, MAX_TRANSACTIONS)}
+                          {searchOptions.maxTransactions >= MAX_TRANSACTIONS && (
+                            <Infinity className="h-4 w-4 ml-1 text-indigo-600 dark:text-indigo-400" />
+                          )}
                         </span>
                       </label>
                       <input 
@@ -804,27 +786,24 @@ const TransactionViewer = () => {
                       <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
                         <span>10</span>
                         <span>100</span>
-                        <span>200</span>
+                        <span>Unlimited</span>
                       </div>
                     </div>
                     
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Start from block height (optional)
+                        Start block height (optional)
                       </label>
                       <input 
                         type="number"
-                        placeholder="Block height (optional)"
-                        value={searchOptions.startBlockHeight !== null ? searchOptions.startBlockHeight : ''}
+                        value={searchOptions.startBlockHeight || ''}
                         onChange={(e) => {
                           const value = e.target.value === '' ? null : parseInt(e.target.value);
                           updateSearchOptions({ startBlockHeight: value });
                         }}
+                        placeholder="Leave empty to use current block - max blocks"
                         className="w-full p-2 border rounded focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                       />
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        Leave empty to start from current block minus max blocks
-                      </p>
                     </div>
                     
                     <div className="flex items-center">
@@ -849,13 +828,13 @@ const TransactionViewer = () => {
                 <button 
                   onClick={cancelSearch}
                   disabled={isCancelling}
-                  className="bg-red-600 text-white py-2 px-4 rounded hover:bg-red-700 transition flex items-center justify-center disabled:opacity-50"
+                  className="bg-red-600 text-white py-2 px-4 rounded hover:bg-red-700 transition flex items-center justify-center"
                 >
                   {isCancelling ? (
-                    <div className="flex items-center">
+                    <>
                       <Loader className="h-5 w-5 mr-2 animate-spin" />
                       <span>Cancelling...</span>
-                    </div>
+                    </>
                   ) : (
                     <>
                       <StopCircle className="h-5 w-5 mr-1" />
@@ -889,132 +868,114 @@ const TransactionViewer = () => {
               <p>Not connected to Ethereum network. Please check your connection in Settings.</p>
             </div>
           )}
+          
+          {searchCancelled && (
+            <div className="mt-4 p-3 bg-amber-100 text-amber-700 rounded flex items-start dark:bg-amber-900 dark:text-amber-200">
+              <Info className="h-5 w-5 mr-2 flex-shrink-0 mt-0.5" />
+              <p>Search was cancelled. Partial results may be displayed.</p>
+            </div>
+          )}
         </div>
       </div>
       
-      {isLoading && (
-        <div className="bg-white p-6 rounded-lg shadow-md dark:bg-gray-800 dark:text-white">
-          <div className="flex flex-col items-center justify-center py-12">
-            <Loader className="h-12 w-12 text-indigo-600 animate-spin mb-4 dark:text-indigo-400" />
-            <h2 className="text-xl font-semibold mb-2">Searching Blockchain Data</h2>
-            <p className="text-gray-600 dark:text-gray-300 text-center max-w-md">
-              This may take a moment depending on the search parameters and network conditions.
-            </p>
-          </div>
-        </div>
-      )}
-      
       {transactionData && (
-        <div className="bg-white p-6 rounded-lg shadow-md dark:bg-gray-800 dark:text-white">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 space-y-2 sm:space-y-0">
-            <h2 className="text-xl font-semibold">Transaction Graph</h2>
-            <div className="flex flex-wrap gap-2">
-              <button 
-                onClick={() => captureScreenshot(false)}
-                className="bg-gray-100 hover:bg-gray-200 text-gray-700 py-1 px-3 rounded flex items-center text-sm dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
-              >
-                <Camera className="h-4 w-4 mr-1" />
-                <span>Capture</span>
-              </button>
-              <button 
-                onClick={() => exportData('json')}
-                className="bg-gray-100 hover:bg-gray-200 text-gray-700 py-1 px-3 rounded flex items-center text-sm dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
-              >
-                <Download className="h-4 w-4 mr-1" />
-                <span>Export JSON</span>
-              </button>
-            </div>
-          </div>
-          
-          {transactionData.searchLimitReached && (
-            <div className="mb-4 p-2 bg-yellow-50 text-yellow-700 rounded-md text-sm flex items-center dark:bg-yellow-900/30 dark:text-yellow-200">
-              <AlertTriangle className="h-4 w-4 mr-2" />
-              <span>
-                Showing {transactionData.transactions.length} transactions (limit reached). 
-                Use advanced options to increase the limit for a complete search.
-              </span>
-            </div>
-          )}
-          
-          <div className="flex flex-col gap-4">
-            <div ref={graphRef} className="border rounded-lg p-4 bg-gray-50 h-[500px] dark:bg-gray-900 dark:border-gray-700">
-              <TransactionGraph data={transactionData} />
+        <>
+          <div className="bg-white p-6 rounded-lg shadow-md dark:bg-gray-800 dark:text-white">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 space-y-2 sm:space-y-0">
+              <h2 className="text-xl font-semibold">Transaction Graph</h2>
+              <div className="flex flex-wrap gap-2">
+                <button 
+                  onClick={captureScreenshot}
+                  className="bg-gray-100 hover:bg-gray-200 text-gray-700 py-1 px-3 rounded flex items-center text-sm dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                >
+                  <Camera className="h-4 w-4 mr-1" />
+                  <span>Capture</span>
+                </button>
+                <button 
+                  onClick={() => exportData('json')}
+                  className="bg-gray-100 hover:bg-gray-200 text-gray-700 py-1 px-3 rounded flex items-center text-sm dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                >
+                  <Download className="h-4 w-4 mr-1" />
+                  <span>Export JSON</span>
+                </button>
+              </div>
             </div>
             
-            <div className="border rounded-lg p-4 bg-gray-50 dark:bg-gray-900 dark:border-gray-700">
-              <h3 className="font-semibold mb-3 flex items-center">
-                <Info className="h-4 w-4 mr-1" />
-                Details
-              </h3>
-              
-              {transactionData.type === 'address' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
-                  <div className="space-y-2">
-                    <p><span className="font-medium">Address:</span> {transactionData.address}</p>
-                    <p><span className="font-medium">Balance:</span> {transactionData.balance} ETH</p>
-                    <p><span className="font-medium">Transaction Count:</span> {transactionData.transactionCount}</p>
-                    <p><span className="font-medium">Type:</span> {transactionData.isContract ? 'Contract' : 'EOA'}</p>
-                  </div>
+            {transactionData.searchLimitReached && (
+              <div className="mb-4 p-2 bg-yellow-50 text-yellow-700 rounded-md text-sm flex items-center dark:bg-yellow-900/30 dark:text-yellow-200">
+                <AlertTriangle className="h-4 w-4 mr-2" />
+                <span>
+                  Showing {transactionData.transactions?.length || 0} transactions (limit reached). 
+                  Use advanced options to increase the limit or set to unlimited for a complete search.
+                </span>
+              </div>
+            )}
+            
+            <div className="flex flex-col lg:flex-row gap-4">
+              <div className="lg:w-3/4">
+                <div ref={graphRef} className="border rounded-lg p-4 bg-gray-50 h-[500px] dark:bg-gray-900 dark:border-gray-700">
+                  <TransactionGraph data={transactionData} />
+                </div>
+              </div>
+              <div className="lg:w-1/4">
+                <div className="border rounded-lg p-4 bg-gray-50 h-[500px] overflow-y-auto dark:bg-gray-900 dark:border-gray-700">
+                  <h3 className="font-semibold mb-2 flex items-center">
+                    <Info className="h-4 w-4 mr-1" />
+                    Legend
+                  </h3>
+                  <TransactionLegend />
                   
-                  <div className="space-y-2">
-                    <p><span className="font-medium">Transactions Shown:</span> {transactionData.transactions.length}</p>
-                    <p><span className="font-medium">Blocks Scanned:</span> {transactionData.blocksScanned}</p>
-                    <p><span className="font-medium">Block Range:</span> {transactionData.startBlock} - {transactionData.endBlock}</p>
-                    <p><span className="font-medium">Cached Blocks Used:</span> {transactionData.cachedBlocksUsed}</p>
-                  </div>
-                  
-                  {transactionData.searchCancelled && (
-                    <div className="col-span-full p-2 bg-yellow-50 text-yellow-700 rounded-md flex items-center dark:bg-yellow-900/30 dark:text-yellow-200">
-                      <AlertTriangle className="h-4 w-4 mr-2" />
-                      <span>Search was cancelled before completion</span>
+                  <h3 className="font-semibold mt-4 mb-2">Details</h3>
+                  {transactionData.type === 'address' && (
+                    <div className="space-y-2 text-sm">
+                      <p><span className="font-medium">Address:</span> {transactionData.address}</p>
+                      <p><span className="font-medium">Balance:</span> {transactionData.balance} ETH</p>
+                      <p><span className="font-medium">Transaction Count:</span> {transactionData.transactionCount}</p>
+                      <p><span className="font-medium">Type:</span> {transactionData.isContract ? 'Contract' : 'EOA'}</p>
+                      <p><span className="font-medium">Transactions Shown:</span> {transactionData.transactions?.length || 0}</p>
+                      {transactionData.blocksScanned && (
+                        <p><span className="font-medium">Blocks Scanned:</span> {transactionData.blocksScanned}</p>
+                      )}
+                      {transactionData.startBlock && transactionData.endBlock && (
+                        <p><span className="font-medium">Block Range:</span> {transactionData.startBlock} - {transactionData.endBlock}</p>
+                      )}
+                      {transactionData.cachedBlocksUsed !== undefined && (
+                        <p><span className="font-medium">Cached Blocks Used:</span> {transactionData.cachedBlocksUsed}</p>
+                      )}
                     </div>
                   )}
                   
-                  {transactionData.timeoutBlocks > 0 && (
-                    <div className="col-span-full p-2 bg-yellow-50 text-yellow-700 rounded-md flex items-center dark:bg-yellow-900/30 dark:text-yellow-200">
-                      <AlertTriangle className="h-4 w-4 mr-2" />
-                      <span>{transactionData.timeoutBlocks} blocks timed out during search</span>
+                  {transactionData.type === 'transaction' && (
+                    <div className="space-y-2 text-sm">
+                      <p><span className="font-medium">Hash:</span> {transactionData.transaction.hash}</p>
+                      <p><span className="font-medium">From:</span> {transactionData.transaction.from}</p>
+                      <p><span className="font-medium">To:</span> {transactionData.transaction.to || 'Contract Creation'}</p>
+                      <p><span className="font-medium">Value:</span> {web3?.utils.fromWei(transactionData.transaction.value, 'ether')} ETH</p>
+                      <p><span className="font-medium">Block:</span> {transactionData.transaction.blockNumber}</p>
+                      <p><span className="font-medium">Status:</span> {transactionData.receipt?.status ? 'Success' : 'Failed'}</p>
+                    </div>
+                  )}
+                  
+                  {transactionData.type === 'block' && (
+                    <div className="space-y-2 text-sm">
+                      <p><span className="font-medium">Block Number:</span> {transactionData.block.number}</p>
+                      <p><span className="font-medium">Hash:</span> {transactionData.block.hash}</p>
+                      <p><span className="font-medium">Timestamp:</span> {new Date(Number(transactionData.block.timestamp) * 1000).toLocaleString()}</p>
+                      <p><span className="font-medium">Transactions:</span> {transactionData.block.transactions.length}</p>
                     </div>
                   )}
                 </div>
-              )}
-              
-              {transactionData.type === 'transaction' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                  <div className="space-y-2">
-                    <p><span className="font-medium">Hash:</span> {transactionData.transaction.hash}</p>
-                    <p><span className="font-medium">From:</span> {transactionData.transaction.from}</p>
-                    <p><span className="font-medium">To:</span> {transactionData.transaction.to || 'Contract Creation'}</p>
-                    <p><span className="font-medium">Value:</span> {web3?.utils.fromWei(transactionData.transaction.value, 'ether')} ETH</p>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <p><span className="font-medium">Block:</span> {transactionData.transaction.blockNumber}</p>
-                    <p><span className="font-medium">Timestamp:</span> {new Date(Number(transactionData.transaction.timestamp) * 1000).toLocaleString()}</p>
-                    <p><span className="font-medium">Gas Used:</span> {transactionData.receipt?.gasUsed}</p>
-                    <p><span className="font-medium">Status:</span> {transactionData.receipt?.status ? 'Success' : 'Failed'}</p>
-                  </div>
-                </div>
-              )}
-              
-              {transactionData.type === 'block' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                  <div className="space-y-2">
-                    <p><span className="font-medium">Block Number:</span> {transactionData.block.number}</p>
-                    <p><span className="font-medium">Hash:</span> {transactionData.block.hash}</p>
-                    <p><span className="font-medium">Timestamp:</span> {new Date(Number(transactionData.block.timestamp) * 1000).toLocaleString()}</p>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <p><span className="font-medium">Transactions:</span> {transactionData.block.transactions.length}</p>
-                    <p><span className="font-medium">Gas Used:</span> {transactionData.block.gasUsed}</p>
-                    <p><span className="font-medium">Gas Limit:</span> {transactionData.block.gasLimit}</p>
-                  </div>
-                </div>
-              )}
+              </div>
             </div>
           </div>
-        </div>
+          
+          <div className="bg-white p-6 rounded-lg shadow-md dark:bg-gray-800 dark:text-white">
+            <h2 className="text-xl font-semibold mb-4">Activity Timeline</h2>
+            <div className="h-[200px] border rounded-lg p-4 bg-gray-50 dark:bg-gray-900 dark:border-gray-700">
+              <TransactionTimeline data={transactionData} />
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
