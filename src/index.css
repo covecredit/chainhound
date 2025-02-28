@@ -1,0 +1,141 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light dark;
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+body {
+  @apply dark:bg-gray-900 dark:text-gray-100;
+}
+
+/* Hide scrollbar for Chrome, Safari and Opera */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Hide scrollbar for IE, Edge and Firefox */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+  .container {
+    width: 100%;
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+}
+
+/* Sidebar transition */
+.sidebar-transition {
+  transition: width 0.3s ease-in-out;
+}
+
+/* Status bar responsiveness */
+@media (max-width: 640px) {
+  .status-item {
+    margin-bottom: 0.25rem;
+  }
+}
+
+/* Ensure status bar text wraps properly on mobile */
+@media (max-width: 640px) {
+  .status-bar-item {
+    white-space: normal;
+    word-break: break-word;
+  }
+}
+
+/* Custom scrollbar for search history dropdown */
+.max-h-60::-webkit-scrollbar {
+  width: 6px;
+}
+
+.max-h-60::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+
+.max-h-60::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 10px;
+}
+
+.max-h-60::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+.dark .max-h-60::-webkit-scrollbar-track {
+  background: #2d3748;
+}
+
+.dark .max-h-60::-webkit-scrollbar-thumb {
+  background: #4a5568;
+}
+
+.dark .max-h-60::-webkit-scrollbar-thumb:hover {
+  background: #718096;
+}
+
+/* Markdown preview styles */
+.prose pre {
+  background-color: #f3f4f6;
+  padding: 1rem;
+  border-radius: 0.375rem;
+  overflow-x: auto;
+}
+
+.dark .prose pre {
+  background-color: #374151;
+}
+
+.prose code {
+  background-color: #f3f4f6;
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+  font-size: 0.875em;
+}
+
+.dark .prose code {
+  background-color: #374151;
+  color: #e5e7eb;
+}
+
+.prose h1, .prose h2, .prose h3, .prose h4 {
+  color: #4f46e5;
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+}
+
+.dark .prose h1, .dark .prose h2, .dark .prose h3, .dark .prose h4 {
+  color: #818cf8;
+}
+
+.prose ul, .prose ol {
+  padding-left: 1.5rem;
+}
+
+.prose li {
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+
+.prose blockquote {
+  border-left: 4px solid #e5e7eb;
+  padding-left: 1rem;
+  font-style: italic;
+  color: #6b7280;
+}
+
+.dark .prose blockquote {
+  border-left-color: #4b5563;
+  color: #9ca3af;
+}
