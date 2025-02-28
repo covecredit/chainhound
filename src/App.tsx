@@ -49,6 +49,8 @@ function App() {
   const [showDataExportImport, setShowDataExportImport] = useState<boolean>(false);
   const [importData, setImportData] = useState<string>('');
   const [importError, setImportError] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
   
   const web3Service = new Web3Service(providerUrl);
   const { clearAllStoredData, exportStorageData, importStorageData, getFromStorage, setInStorage } = useStorage();
@@ -64,7 +66,10 @@ function App() {
       return transactions;
     } catch (error) {
       console.error('Error fetching transactions:', error);
+      setError('Failed to fetch transactions. Please try again.');
       throw error;
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -416,226 +421,211 @@ function App() {
         )}
 
         <div className="mb-6">
-          <div className="bg-gray-800 border-l-4 border-blue-500 p-4 rounded-md">
-            <div className="flex">
-              <div className="flex-shrink-0">
-                <ArrowRight className="h-5 w-5 text-blue-500" />
-              </div>
-              <div className="ml-3">
-                <p className="text-sm text-gray-300">
-                  Track suspicious blockchain activity with our forensic tools. Identify illicit transactions, monitor addresses, and analyze contract behavior across multiple blockchains.
-                </p>
+          <div className="w-full">
+            <div className="relative">
+              <input
+                type="text"
+                value={searchAddress}
+                onChange={(e) => setSearchAddress(e.target.value)}
+                placeholder="Enter an Ethereum address or contract"
+                className="w-full rounded-md border border-gray-600 bg-gray-700 shadow-sm pl-10 pr-4 py-2 text-gray-200 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              />
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Search className="h-5 w-5 text-gray-500" />
               </div>
             </div>
           </div>
-        </div>
-
-        <div className="mb-6">
-          <div className="flex flex-col gap-4">
-            <div className="w-full">
-              <div className="relative">
-                <input
-                  type="text"
-                  value={searchAddress}
-                  onChange={(e) => setSearchAddress(e.target.value)}
-                  placeholder="Enter an Ethereum address or contract"
-                  className="w-full rounded-md border border-gray-600 bg-gray-700 shadow-sm pl-10 pr-4 py-2 text-gray-200 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                />
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Search className="h-5 w-5 text-gray-500" />
-                </div>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => setActiveTab('alerts')}
-                className={`px-4 py-2 rounded-md ${
-                  activeTab === 'alerts' 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                }`}
-              >
-                Alerts
-              </button>
-              <button
-                onClick={() => setActiveTab('cross-chain')}
-                className={`px-4 py-2 rounded-md ${
-                  activeTab === 'cross-chain' 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                }`}
-              >
-                Cross-Chain
-              </button>
-              <button
-                onClick={() => setActiveTab('visualizer')}
-                className={`px-4 py-2 rounded-md ${
-                  activeTab === 'visualizer' 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                }`}
-              >
-                Visualizer
-              </button>
-              <button
-                onClick={() => setActiveTab('history')}
-                className={`px-4 py-2 rounded-md ${
-                  activeTab === 'history' 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                }`}
-              >
-                History
-              </button>
-              <button
-                onClick={() => setActiveTab('behavior')}
-                className={`px-4 py-2 rounded-md ${
-                  activeTab === 'behavior' 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                }`}
-              >
-                Threat Analysis
-              </button>
-              <button
-                onClick={() => setActiveTab('decompiler')}
-                className={`px-4 py-2 rounded-md ${
-                  activeTab === 'decompiler' 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                }`}
-              >
-                Decompiler
-              </button>
-              <button
-                onClick={() => setActiveTab('events')}
-                className={`px-4 py-2 rounded-md ${
-                  activeTab === 'events' 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                }`}
-              >
-                Events
-              </button>
-              <button
-                onClick={() => setActiveTab('labels')}
-                className={`px-4 py-2 rounded-md ${
-                  activeTab === 'labels' 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                }`}
-              >
-                Labels
-              </button>
-              <button
-                onClick={() => setActiveTab('api')}
-                className={`px-4 py-2 rounded-md ${
-                  activeTab === 'api' 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                }`}
-              >
-                API
-              </button>
-              <button
-                onClick={() => setActiveTab('notes')}
-                className={`px-4 py-2 rounded-md ${
-                  activeTab === 'notes' 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                }`}
-              >
-                Notes
-              </button>
-              <button
-                onClick={() => setActiveTab('reports')}
-                className={`px-4 py-2 rounded-md ${
-                  activeTab === 'reports' 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                }`}
-              >
-                Reports
-              </button>
-            </div>
+          <div className="flex flex-wrap gap-2 mt-3">
+            <button
+              onClick={() => setActiveTab('alerts')}
+              className={`px-4 py-2 rounded-md ${
+                activeTab === 'alerts' 
+                  ? 'bg-blue-600 text-white' 
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
+            >
+              Alerts
+            </button>
+            <button
+              onClick={() => setActiveTab('cross-chain')}
+              className={`px-4 py-2 rounded-md ${
+                activeTab === 'cross-chain' 
+                  ? 'bg-blue-600 text-white' 
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
+            >
+              Cross-Chain
+            </button>
+            <button
+              onClick={() => setActiveTab('visualizer')}
+              className={`px-4 py-2 rounded-md ${
+                activeTab === 'visualizer' 
+                  ? 'bg-blue-600 text-white' 
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
+            >
+              Visualizer
+            </button>
+            <button
+              onClick={() => setActiveTab('history')}
+              className={`px-4 py-2 rounded-md ${
+                activeTab === 'history' 
+                  ? 'bg-blue-600 text-white' 
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
+            >
+              History
+            </button>
+            <button
+              onClick={() => setActiveTab('behavior')}
+              className={`px-4 py-2 rounded-md ${
+                activeTab === 'behavior' 
+                  ? 'bg-blue-600 text-white' 
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
+            >
+              Threat Analysis
+            </button>
+            <button
+              onClick={() => setActiveTab('decompiler')}
+              className={`px-4 py-2 rounded-md ${
+                activeTab === 'decompiler' 
+                  ? 'bg-blue-600 text-white' 
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
+            >
+              Decompiler
+            </button>
+            <button
+              onClick={() => setActiveTab('events')}
+              className={`px-4 py-2 rounded-md ${
+                activeTab === 'events' 
+                  ? 'bg-blue-600 text-white' 
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
+            >
+              Events
+            </button>
+            <button
+              onClick={() => setActiveTab('labels')}
+              className={`px-4 py-2 rounded-md ${
+                activeTab === 'labels' 
+                  ? 'bg-blue-600 text-white' 
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
+            >
+              Labels
+            </button>
+            <button
+              onClick={() => setActiveTab('api')}
+              className={`px-4 py-2 rounded-md ${
+                activeTab === 'api' 
+                  ? 'bg-blue-600 text-white' 
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
+            >
+              API
+            </button>
+            <button
+              onClick={() => setActiveTab('notes')}
+              className={`px-4 py-2 rounded-md ${
+                activeTab === 'notes' 
+                  ? 'bg-blue-600 text-white' 
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
+            >
+              Notes
+            </button>
+            <button
+              onClick={() => setActiveTab('reports')}
+              className={`px-4 py-2 rounded-md ${
+                activeTab === 'reports' 
+                  ? 'bg-blue-600 text-white' 
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
+            >
+              Reports
+            </button>
           </div>
         </div>
 
-        {activeTab === 'alerts' && (
-          <AlertsManager
-            address={searchAddress}
-            providerUrl={providerUrl}
-          />
-        )}
+        <div className="rounded-lg overflow-hidden border-2 border-gray-700 shadow-lg">
+          {activeTab === 'alerts' && (
+            <AlertsManager
+              address={searchAddress}
+              providerUrl={providerUrl}
+            />
+          )}
 
-        {activeTab === 'cross-chain' && (
-          <CrossChainAnalyzer
-            address={searchAddress}
-            providerUrl={providerUrl}
-          />
-        )}
+          {activeTab === 'cross-chain' && (
+            <CrossChainAnalyzer
+              address={searchAddress}
+              providerUrl={providerUrl}
+            />
+          )}
 
-        {activeTab === 'visualizer' && (
-          <BlockchainTransactionVisualizer
-            onFetchTransactions={fetchTransactions}
-            blockchain={blockchain}
-            autoRefresh={!useSampleData}
-            refreshInterval={30000}
-            onAddressSelect={handleAddressSelect}
-          />
-        )}
+          {activeTab === 'visualizer' && (
+            <BlockchainTransactionVisualizer
+              onFetchTransactions={fetchTransactions}
+              blockchain={blockchain}
+              autoRefresh={!useSampleData}
+              refreshInterval={30000}
+              onAddressSelect={handleAddressSelect}
+            />
+          )}
 
-        {activeTab === 'history' && (
-          <AddressTransactionHistory
-            address={searchAddress}
-            providerUrl={providerUrl}
-          />
-        )}
+          {activeTab === 'history' && (
+            <AddressTransactionHistory
+              address={searchAddress}
+              providerUrl={providerUrl}
+            />
+          )}
 
-        {activeTab === 'behavior' && (
-          <AddressBehaviorAnalysis
-            address={searchAddress}
-            providerUrl={providerUrl}
-          />
-        )}
+          {activeTab === 'behavior' && (
+            <AddressBehaviorAnalysis
+              address={searchAddress}
+              providerUrl={providerUrl}
+            />
+          )}
 
-        {activeTab === 'decompiler' && (
-          <ContractBytecodeDecompiler
-            contractAddress={searchAddress}
-            providerUrl={providerUrl}
-          />
-        )}
+          {activeTab === 'decompiler' && (
+            <ContractBytecodeDecompiler
+              contractAddress={searchAddress}
+              providerUrl={providerUrl}
+            />
+          )}
 
-        {activeTab === 'events' && (
-          <ContractEventLogs
-            contractAddress={searchAddress}
-            providerUrl={providerUrl}
-          />
-        )}
+          {activeTab === 'events' && (
+            <ContractEventLogs
+              contractAddress={searchAddress}
+              providerUrl={providerUrl}
+            />
+          )}
 
-        {activeTab === 'labels' && (
-          <AddressLabelManager />
-        )}
+          {activeTab === 'labels' && (
+            <AddressLabelManager />
+          )}
 
-        {activeTab === 'api' && (
-          <ApiAccessManager />
-        )}
-        
-        {activeTab === 'cases' && (
-          <CaseManager />
-        )}
-        
-        {activeTab === 'notes' && (
-          <NoteScratchpad />
-        )}
-        
-        {activeTab === 'reports' && (
-          <ReportGenerator />
-        )}
+          {activeTab === 'api' && (
+            <ApiAccessManager />
+          )}
+          
+          {activeTab === 'cases' && (
+            <CaseManager />
+          )}
+          
+          {activeTab === 'notes' && (
+            <NoteScratchpad />
+          )}
+          
+          {activeTab === 'reports' && (
+            <ReportGenerator />
+          )}
 
-        {activeTab === 'threats' && (
-          <ThreatManager />
-        )}
+          {activeTab === 'threats' && (
+            <ThreatManager />
+          )}
+        </div>
       </main>
 
       <footer className="bg-gray-800 mt-12 py-6 border-t border-gray-700">

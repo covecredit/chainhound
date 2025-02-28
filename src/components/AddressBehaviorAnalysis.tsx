@@ -4,12 +4,12 @@ import Web3Service from '../services/web3Service';
 import { Transaction } from '../types/transaction';
 import { EventLog } from '../types/event';
 import AddressLabel from './AddressLabel';
-import { Bar } from 'react-chartjs-2';
-import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
+import { Bar, Pie } from 'react-chartjs-2';
+import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title } from 'chart.js';
 import { getCountryFlag, getCountryName } from '../utils/countryFlags';
 
 // Register ChartJS components
-ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
+ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title);
 
 interface AddressBehaviorAnalysisProps {
   address: string;
@@ -24,6 +24,8 @@ interface BehaviorMetrics {
   contractInteractions: number;
   averageValue: number;
   largestTransaction: number;
+  transactionVolume: number;
+  transactionFrequency: number;
   activityByTime: Record<string, number>;
   activityByDay: Record<string, number>;
   trustScore: number;
@@ -35,6 +37,8 @@ interface BehaviorMetrics {
     similarAddresses: string[];
     lowValueTxCount: number;
   };
+  chainDistribution: Record<string, number>;
+  recentTransactions: Transaction[];
   countryTags: string[];
 }
 
@@ -117,33 +121,33 @@ const AddressBehaviorAnalysis: React.FC<AddressBehaviorAnalysisProps> = ({
     
     // Activity by time
     const activityByTime: Record<string, number> = {};
+    for (let i = 0; i < 24; i++) {
+      activityByTime[`${i.toString().padStart(2, '0')}:00`] = 0;
+    }
+    
     filteredTxs.forEach(tx => {
       const date = new Date(Number(tx.timestamp) * 1000);
       const hour = date.getHours();
       const timeSlot = `${hour.toString().padStart(2, '0')}:00`;
-      
-      if (!activityByTime[timeSlot]) {
-        activityByTime[timeSlot] = 0;
-      }
-      activityByTime[timeSlot]++;
+      activityByTime[timeSlot] = (activityByTime[timeSlot] || 0) + 1;
     });
     
     // Activity by day of week
     const activityByDay: Record<string, number> = {
-      'Sunday': 0,
-      'Monday': 0,
-      'Tuesday': 0,
-      'Wednesday': 0,
-      'Thursday': 0,
-      'Friday': 0,
-      'Saturday': 0
+      'Sun': 0, 'Mon': 0, 'Tue': 0, 'Wed': 0, 'Thu': 0, 'Fri': 0, 'Sat': 0
     };
     
     filteredTxs.forEach(tx => {
       const date = new Date(Number(tx.timestamp) * 1000);
-      const day = date.getDay();
-      const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-      activityByDay[dayNames[day]]++;
+      const day = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][date.getDay()];
+      activityByDay[day] = (activityByDay[day] || 0) + 1;
+    });
+    
+    // Chain distribution
+    const chainDistribution: Record<string, number> = {};
+    filteredTxs.forEach(tx => {
+      const chain = tx.blockchain;
+      chainDistribution[chain] = (chainDistribution[chain] || 0) + 1;
     });
     
     // Find first and last activity
@@ -151,8 +155,24 @@ const AddressBehaviorAnalysis: React.FC<AddressBehaviorAnalysisProps> = ({
     const firstActivity = timestamps.length > 0 ? Math.min(...timestamps) : 0;
     const lastActivity = timestamps.length > 0 ? Math.max(...timestamps) : 0;
     
+    // Calculate transaction frequency (transactions per day)
+    const transactionFrequency = timestamps.length > 0 ? 
+      filteredTxs.length / (Math.max(1, (lastActivity - firstActivity) / (24 * 60 * 60))) : 0;
+    
+    // Calculate total transaction volume
+    const transactionVolume = totalValue;
+    
     // Check for address history poisoning
     const historyPoisoningRisk = detectAddressHistoryPoisoning(filteredTxs);
+    
+    // Identify country tags based on transaction patterns
+    const countryTags: string[] = [];
+    
+    // Check for North Korean patterns
+    if (address.toLowerCase() === '0x0fa09c3a328792253f8dee7116848723b72a6d2e'.toLowerCase() ||
+        address.toLowerCase() === '0xfa09c3a328792253f8dee7116848723b72a6d2ea'.toLowerCase()) {
+      countryTags.push('KP'); // North Korea
+    }
     
     // Calculate risk factors
     const riskFactors: string[] = [];
@@ -202,8 +222,10 @@ const AddressBehaviorAnalysis: React.FC<AddressBehaviorAnalysisProps> = ({
     
     // Check for interactions with suspicious addresses
     const hasSuspiciousInteractions = filteredTxs.some(tx => 
-      suspiciousAddresses.includes(tx.from.toLowerCase()) || 
-      suspiciousAddresses.includes(tx.to.toLowerCase())
+      suspiciousAddresses.some(addr => 
+        tx.from.toLowerCase() === addr.toLowerCase() || 
+        tx.to.toLowerCase() === addr.toLowerCase()
+      )
     );
     
     if (hasSuspiciousInteractions) {
@@ -211,20 +233,9 @@ const AddressBehaviorAnalysis: React.FC<AddressBehaviorAnalysisProps> = ({
     }
     
     // Check for cross-chain activity (potential money laundering)
-    const hasMultipleChains = new Set(filteredTxs.map(tx => tx.blockchain)).size > 1;
+    const hasMultipleChains = Object.keys(chainDistribution).length > 1;
     if (hasMultipleChains) {
       riskFactors.push('Cross-chain activity detected (potential money laundering)');
-    }
-    
-    // Determine country tags
-    const countryTags: string[] = [];
-    
-    // North Korea tag for known addresses
-    if (address.toLowerCase() === '0x0fa09c3a328792253f8dee7116848723b72a6d2e'.toLowerCase() ||
-        address.toLowerCase() === '0xfa09c3a328792253f8dee7116848723b72a6d2ea'.toLowerCase() ||
-        address.toLowerCase() === '0xdfd5293d8e347dfe59e90efd55b2956a1343963d'.toLowerCase() ||
-        address.toLowerCase() === '0x21a31ee1afc51d94c2efccaa2092ad1028285549'.toLowerCase()) {
-      countryTags.push('KP');
     }
     
     // Calculate trust score (0-100)
@@ -264,6 +275,9 @@ const AddressBehaviorAnalysis: React.FC<AddressBehaviorAnalysisProps> = ({
     // Ensure score is within 0-100 range
     trustScore = Math.max(0, Math.min(100, trustScore));
     
+    // Get recent transactions for display
+    const recentTransactions = [...filteredTxs].sort((a, b) => b.timestamp - a.timestamp).slice(0, 5);
+    
     setMetrics({
       totalTransactions: filteredTxs.length,
       incomingCount: incomingTxs.length,
@@ -272,6 +286,8 @@ const AddressBehaviorAnalysis: React.FC<AddressBehaviorAnalysisProps> = ({
       contractInteractions,
       averageValue,
       largestTransaction,
+      transactionVolume,
+      transactionFrequency,
       activityByTime,
       activityByDay,
       trustScore,
@@ -279,6 +295,8 @@ const AddressBehaviorAnalysis: React.FC<AddressBehaviorAnalysisProps> = ({
       lastActivity,
       firstActivity,
       historyPoisoningRisk,
+      chainDistribution,
+      recentTransactions,
       countryTags
     });
   };
@@ -361,19 +379,19 @@ const AddressBehaviorAnalysis: React.FC<AddressBehaviorAnalysisProps> = ({
     return new Date(timestamp * 1000).toLocaleString();
   };
   
-  // Chart data for activity by hour
-  const getActivityByHourChartData = () => {
+  // Prepare chart data for activity by time
+  const getActivityByTimeChartData = () => {
     if (!metrics) return null;
     
-    const hours = Array.from({ length: 24 }, (_, i) => `${i.toString().padStart(2, '0')}:00`);
-    const data = hours.map(hour => metrics.activityByTime[hour] || 0);
+    const labels = Object.keys(metrics.activityByTime).sort();
+    const data = labels.map(hour => metrics.activityByTime[hour] || 0);
     
     return {
-      labels: hours,
+      labels,
       datasets: [
         {
           label: 'Transactions',
-          data: data,
+          data,
           backgroundColor: 'rgba(59, 130, 246, 0.5)',
           borderColor: 'rgba(59, 130, 246, 1)',
           borderWidth: 1
@@ -382,57 +400,36 @@ const AddressBehaviorAnalysis: React.FC<AddressBehaviorAnalysisProps> = ({
     };
   };
   
-  // Chart data for activity by day
-  const getActivityByDayChartData = () => {
-    if (!metrics) return null;
+  // Prepare chart data for chain distribution
+  const getChainDistributionChartData = () => {
+    if (!metrics || !metrics.chainDistribution) return null;
     
-    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const data = days.map(day => metrics.activityByDay[day] || 0);
+    const labels = Object.keys(metrics.chainDistribution);
+    const data = labels.map(chain => metrics.chainDistribution[chain]);
+    
+    const backgroundColors = labels.map(chain => {
+      switch (chain) {
+        case 'ethereum': return 'rgba(62, 142, 247, 0.7)';
+        case 'bsc': return 'rgba(240, 185, 11, 0.7)';
+        case 'polygon': return 'rgba(130, 71, 229, 0.7)';
+        case 'arbitrum': return 'rgba(40, 160, 240, 0.7)';
+        case 'optimism': return 'rgba(255, 4, 32, 0.7)';
+        default: return 'rgba(156, 163, 175, 0.7)';
+      }
+    });
     
     return {
-      labels: days,
+      labels,
       datasets: [
         {
           label: 'Transactions',
-          data: data,
-          backgroundColor: 'rgba(16, 185, 129, 0.5)',
-          borderColor: 'rgba(16, 185, 129, 1)',
+          data,
+          backgroundColor: backgroundColors,
+          borderColor: backgroundColors.map(color => color.replace('0.7', '1')),
           borderWidth: 1
         }
       ]
     };
-  };
-  
-  // Chart options
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    scales: {
-      y: {
-        beginAtZero: true,
-        ticks: {
-          color: 'rgba(209, 213, 219, 0.8)'
-        },
-        grid: {
-          color: 'rgba(75, 85, 99, 0.2)'
-        }
-      },
-      x: {
-        ticks: {
-          color: 'rgba(209, 213, 219, 0.8)'
-        },
-        grid: {
-          color: 'rgba(75, 85, 99, 0.2)'
-        }
-      }
-    },
-    plugins: {
-      legend: {
-        labels: {
-          color: 'rgba(209, 213, 219, 0.8)'
-        }
-      }
-    }
   };
   
   if (loading) {
@@ -508,6 +505,11 @@ const AddressBehaviorAnalysis: React.FC<AddressBehaviorAnalysisProps> = ({
             </h2>
             <p className="text-sm text-gray-400 mt-1">
               Analyzing behavior for <AddressLabel address={address} showEdit={false} />
+              {metrics.countryTags.map(country => (
+                <span key={country} className="ml-2" title={getCountryName(country)}>
+                  {getCountryFlag(country)}
+                </span>
+              ))}
             </p>
           </div>
           <div>
@@ -572,17 +574,6 @@ const AddressBehaviorAnalysis: React.FC<AddressBehaviorAnalysisProps> = ({
                     </li>
                   ))}
                 </ul>
-              </div>
-            )}
-            
-            {metrics.countryTags.includes('KP') && (
-              <div className="mt-4 bg-red-900/20 border-l-4 border-red-600 p-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-lg" title="North Korea">{getCountryFlag('KP')}</span>
-                  <p className="text-sm text-red-400">
-                    <strong>Warning:</strong> This address is associated with North Korea. North Korean actors are known to engage in cryptocurrency theft and money laundering to evade international sanctions.
-                  </p>
-                </div>
               </div>
             )}
           </div>
@@ -698,21 +689,80 @@ const AddressBehaviorAnalysis: React.FC<AddressBehaviorAnalysisProps> = ({
         </div>
         
         {/* Activity Patterns */}
-        <div className="mb-6">
-          <h3 className="text-lg font-medium text-white mb-3">Activity Patterns</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          <div>
+            <h3 className="text-lg font-medium text-white mb-3">Activity by Time</h3>
             <div className="bg-gray-900 rounded-lg p-4 border border-gray-700">
-              <h4 className="text-sm font-medium text-white mb-3">Activity by Hour</h4>
-              <div className="h-64">
-                <Bar data={getActivityByHourChartData()} options={chartOptions} />
-              </div>
+              {getActivityByTimeChartData() && (
+                <Bar 
+                  data={getActivityByTimeChartData()!}
+                  options={{
+                    responsive: true,
+                    plugins: {
+                      legend: {
+                        display: false
+                      },
+                      tooltip: {
+                        backgroundColor: '#1f2937',
+                        titleColor: '#f3f4f6',
+                        bodyColor: '#f3f4f6',
+                        borderColor: '#374151',
+                        borderWidth: 1
+                      }
+                    },
+                    scales: {
+                      x: {
+                        grid: {
+                          color: 'rgba(75, 85, 99, 0.2)'
+                        },
+                        ticks: {
+                          color: '#9ca3af'
+                        }
+                      },
+                      y: {
+                        grid: {
+                          color: 'rgba(75, 85, 99, 0.2)'
+                        },
+                        ticks: {
+                          color: '#9ca3af'
+                        }
+                      }
+                    }
+                  }}
+                />
+              )}
             </div>
-            
+          </div>
+          
+          <div>
+            <h3 className="text-lg font-medium text-white mb-3">Chain Distribution</h3>
             <div className="bg-gray-900 rounded-lg p-4 border border-gray-700">
-              <h4 className="text-sm font-medium text-white mb-3">Activity by Day</h4>
-              <div className="h-64">
-                <Bar data={getActivityByDayChartData()} options={chartOptions} />
-              </div>
+              {getChainDistributionChartData() && (
+                <Pie 
+                  data={getChainDistributionChartData()!}
+                  options={{
+                    responsive: true,
+                    plugins: {
+                      legend: {
+                        position: 'right',
+                        labels: {
+                          color: '#9ca3af',
+                          font: {
+                            size: 12
+                          }
+                        }
+                      },
+                      tooltip: {
+                        backgroundColor: '#1f2937',
+                        titleColor: '#f3f4f6',
+                        bodyColor: '#f3f4f6',
+                        borderColor: '#374151',
+                        borderWidth: 1
+                      }
+                    }
+                  }}
+                />
+              )}
             </div>
           </div>
         </div>
@@ -778,9 +828,9 @@ const AddressBehaviorAnalysis: React.FC<AddressBehaviorAnalysisProps> = ({
                 <div className="flex items-start gap-2">
                   <Flag className="h-5 w-5 text-red-500 mt-0.5" />
                   <div>
-                    <h4 className="text-md font-medium text-white">Sanctioned Entity</h4>
+                    <h4 className="text-md font-medium text-white">Country Association</h4>
                     <p className="text-sm text-gray-300">
-                      This address is associated with North Korea {getCountryFlag('KP')}. North Korean actors are known to engage in cryptocurrency theft and money laundering to evade international sanctions.
+                      This address shows patterns consistent with North Korean (🇰🇵) threat actors. It may be associated with state-sponsored hacking groups like Lazarus Group or APT38.
                     </p>
                   </div>
                 </div>

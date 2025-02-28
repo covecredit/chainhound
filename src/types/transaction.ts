@@ -11,6 +11,8 @@ export interface Transaction {
     blockchain: string;
     hash: string;
   }[];
+  input?: string;
+  type?: string;
 }
 
 export interface Address {

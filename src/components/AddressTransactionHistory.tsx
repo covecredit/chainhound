@@ -66,27 +66,9 @@ const AddressTransactionHistory: React.FC<AddressTransactionHistoryProps> = ({
   };
   
   const formatValue = (value: string) => {
+    // Convert wei to ETH and format with full precision
     const ethValue = parseFloat(value) / 1e18;
-    return ethValue.toFixed(6);
-  };
-  
-  const shortenAddress = (addr: string) => {
-    return `${addr.substring(0, 8)}...${addr.substring(addr.length - 6)}`;
-  };
-  
-  const shortenHash = (hash: string) => {
-    return `${hash.substring(0, 10)}...${hash.substring(hash.length - 8)}`;
-  };
-  
-  const getTransactionDirection = (tx: Transaction) => {
-    const isIncoming = tx.to.toLowerCase() === address.toLowerCase();
-    const isOutgoing = tx.from.toLowerCase() === address.toLowerCase();
-    
-    return {
-      isIncoming,
-      isOutgoing,
-      direction: isIncoming ? 'incoming' : isOutgoing ? 'outgoing' : 'other'
-    };
+    return ethValue.toString();
   };
   
   const getExplorerUrl = (chain: string, hash: string, isAddress: boolean = false) => {
@@ -108,6 +90,17 @@ const AddressTransactionHistory: React.FC<AddressTransactionHistoryProps> = ({
       arbitrum: 'ETH',
       optimism: 'ETH'
     }[chain] || 'ETH';
+  };
+  
+  const getTransactionDirection = (tx: Transaction) => {
+    const isIncoming = tx.to.toLowerCase() === address.toLowerCase();
+    const isOutgoing = tx.from.toLowerCase() === address.toLowerCase();
+    
+    return {
+      isIncoming,
+      isOutgoing,
+      direction: isIncoming ? 'incoming' : isOutgoing ? 'outgoing' : 'other'
+    };
   };
   
   const filteredTransactions = transactions
@@ -381,7 +374,7 @@ const AddressTransactionHistory: React.FC<AddressTransactionHistoryProps> = ({
                         href={getExplorerUrl(tx.blockchain, tx.hash)} 
                         className="flex items-center gap-1 hover:underline"
                       >
-                        {shortenHash(tx.hash)}
+                        {tx.hash}
                         <ExternalLink className="h-3 w-3" />
                       </a>
                     </td>

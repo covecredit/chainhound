@@ -49,12 +49,10 @@ const ContractEventLogs: React.FC<ContractEventLogsProps> = ({
     return new Date(Number(timestamp) * 1000).toLocaleString();
   };
   
-  const shortenAddress = (addr: string) => {
-    return `${addr.substring(0, 8)}...${addr.substring(addr.length - 6)}`;
-  };
-  
-  const shortenHash = (hash: string) => {
-    return `${hash.substring(0, 10)}...${hash.substring(hash.length - 8)}`;
+  const getExplorerUrl = (hash: string) => {
+    // For transactions, we could create a transaction detail page in the future
+    // For now, just link to the address history
+    return `/?address=${hash}`;
   };
   
   const filteredEvents = selectedEventType === 'all' 
@@ -177,7 +175,7 @@ const ContractEventLogs: React.FC<ContractEventLogsProps> = ({
           </div>
         </div>
         <p className="text-sm text-gray-400 mt-1">
-          Viewing events for contract <AddressLabel address={contractAddress} showEdit={false} />
+          Viewing events for contract <AddressLabel address={contractAddress} showEdit={false} showFull={true} />
         </p>
       </div>
       
@@ -248,12 +246,10 @@ const ContractEventLogs: React.FC<ContractEventLogsProps> = ({
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-400">
                     <a 
-                      href={`https://etherscan.io/tx/${log.transactionHash}`} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
+                      href={getExplorerUrl(log.transactionHash)} 
                       className="flex items-center gap-1 hover:underline"
                     >
-                      {shortenHash(log.transactionHash)}
+                      {log.transactionHash}
                       <ExternalLink className="h-3 w-3" />
                     </a>
                   </td>
@@ -269,7 +265,7 @@ const ContractEventLogs: React.FC<ContractEventLogsProps> = ({
                         <div key={i} className="mb-1">
                           <span className="text-gray-400">{key}:</span>{' '}
                           {typeof value === 'string' && value.startsWith('0x') && value.length === 42 ? (
-                            <AddressLabel address={value} showEdit={false} />
+                            <AddressLabel address={value} showEdit={false} showFull={true} />
                           ) : (
                             <span>{String(value)}</span>
                           )}

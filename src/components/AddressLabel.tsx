@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { Tag, Edit, Check, X, ExternalLink, Flag } from 'lucide-react';
 import { AddressLabelService } from '../services/addressLabelService';
-import { getCountryFlag } from '../utils/countryFlags';
+import { getCountryFlag, getCountryName } from '../utils/countryFlags';
 
 interface AddressLabelProps {
   address: string;
   showEdit?: boolean;
+  showFull?: boolean;
 }
 
 const AddressLabel: React.FC<AddressLabelProps> = ({ 
   address,
-  showEdit = true
+  showEdit = true,
+  showFull = false
 }) => {
   const [label, setLabel] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState<boolean>(false);
@@ -50,8 +52,11 @@ const AddressLabel: React.FC<AddressLabelProps> = ({
     setIsEditing(false);
   };
   
-  const shortenAddress = (addr: string) => {
-    return `${addr.substring(0, 6)}...${addr.substring(addr.length - 4)}`;
+  const displayAddress = () => {
+    if (showFull) {
+      return address;
+    }
+    return `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
   };
   
   const getLabelColor = () => {
@@ -117,12 +122,12 @@ const AddressLabel: React.FC<AddressLabelProps> = ({
       ) : (
         <>
           {/* Fix: Don't use nested anchor tags */}
-          <span className="hover:underline text-gray-300 mr-1">
-            {shortenAddress(address)}
+          <span className="hover:underline text-gray-300 mr-1 font-mono">
+            {displayAddress()}
           </span>
           
           {country && (
-            <span className="mr-1" title={`Country: ${country}`}>
+            <span className="mr-1" title={`Country: ${getCountryName(country)}`}>
               {getCountryFlag(country)}
             </span>
           )}

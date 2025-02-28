@@ -226,10 +226,10 @@ const AlertsManager: React.FC<AlertsManagerProps> = ({
   };
   
   return (
-    <div className="bg-gray-800 rounded-lg shadow-lg overflow-hidden border border-gray-700">
-      <div className="p-4 border-b border-gray-700">
+    <div className="component-card">
+      <div className="component-header">
         <div className="flex justify-between items-center">
-          <h2 className="text-xl font-semibold text-white flex items-center gap-2">
+          <h2 className="component-title">
             <Bell className="h-5 w-5 text-red-500" />
             Blockchain Alerts
             {unreadCount > 0 && (
@@ -239,14 +239,14 @@ const AlertsManager: React.FC<AlertsManagerProps> = ({
             )}
           </h2>
           <button 
-            className="flex items-center gap-1 px-3 py-1 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+            className="btn btn-danger flex items-center gap-1"
             onClick={() => setShowCreateAlert(true)}
           >
             <Plus className="h-4 w-4" />
             <span>New Alert</span>
           </button>
         </div>
-        <p className="text-sm text-gray-400 mt-1">
+        <p className="component-subtitle">
           Set up alerts for suspicious blockchain activities
         </p>
       </div>
@@ -477,7 +477,7 @@ const AlertsManager: React.FC<AlertsManagerProps> = ({
             
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
+                <label className="form-label">
                   Alert Name
                 </label>
                 <input
@@ -485,12 +485,12 @@ const AlertsManager: React.FC<AlertsManagerProps> = ({
                   value={newAlert.name}
                   onChange={(e) => setNewAlert({...newAlert, name: e.target.value})}
                   placeholder="e.g., Large Transaction Alert"
-                  className="w-full rounded-md border border-gray-600 bg-gray-700 shadow-sm px-3 py-2 text-gray-200 focus:outline-none focus:ring-red-500 focus:border-red-500"
+                  className="form-input"
                 />
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
+                <label className="form-label">
                   Description
                 </label>
                 <input
@@ -498,18 +498,18 @@ const AlertsManager: React.FC<AlertsManagerProps> = ({
                   value={newAlert.description}
                   onChange={(e) => setNewAlert({...newAlert, description: e.target.value})}
                   placeholder="e.g., Alert me when large transactions occur"
-                  className="w-full rounded-md border border-gray-600 bg-gray-700 shadow-sm px-3 py-2 text-gray-200 focus:outline-none focus:ring-red-500 focus:border-red-500"
+                  className="form-input"
                 />
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
+                <label className="form-label">
                   Alert Condition
                 </label>
                 <select
                   value={newAlert.conditionType}
                   onChange={(e) => setNewAlert({...newAlert, conditionType: e.target.value as AlertConditionType})}
-                  className="w-full rounded-md border border-gray-600 bg-gray-700 shadow-sm px-3 py-2 text-gray-200 focus:outline-none focus:ring-red-500 focus:border-red-500"
+                  className="form-select"
                 >
                   <option value="address_activity">Address Activity</option>
                   <option value="large_transaction">Large Transaction</option>
@@ -520,7 +520,7 @@ const AlertsManager: React.FC<AlertsManagerProps> = ({
               
               {newAlert.conditionType === 'address_activity' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">
+                  <label className="form-label">
                     Address to Monitor
                   </label>
                   <input
@@ -528,14 +528,14 @@ const AlertsManager: React.FC<AlertsManagerProps> = ({
                     value={newAlert.address}
                     onChange={(e) => setNewAlert({...newAlert, address: e.target.value})}
                     placeholder="0x..."
-                    className="w-full rounded-md border border-gray-600 bg-gray-700 shadow-sm px-3 py-2 text-gray-200 focus:outline-none focus:ring-red-500 focus:border-red-500"
+                    className="form-input"
                   />
                 </div>
               )}
               
               {newAlert.conditionType === 'large_transaction' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">
+                  <label className="form-label">
                     Threshold (ETH)
                   </label>
                   <input
@@ -544,14 +544,14 @@ const AlertsManager: React.FC<AlertsManagerProps> = ({
                     onChange={(e) => setNewAlert({...newAlert, threshold: e.target.value})}
                     min="0"
                     step="0.1"
-                    className="w-full rounded-md border border-gray-600 bg-gray-700 shadow-sm px-3 py-2 text-gray-200 focus:outline-none focus:ring-red-500 focus:border-red-500"
+                    className="form-input"
                   />
                 </div>
               )}
               
               {newAlert.conditionType === 'contract_interaction' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">
+                  <label className="form-label">
                     Contract Address
                   </label>
                   <input
@@ -559,13 +559,13 @@ const AlertsManager: React.FC<AlertsManagerProps> = ({
                     value={newAlert.contractAddress}
                     onChange={(e) => setNewAlert({...newAlert, contractAddress: e.target.value})}
                     placeholder="0x..."
-                    className="w-full rounded-md border border-gray-600 bg-gray-700 shadow-sm px-3 py-2 text-gray-200 focus:outline-none focus:ring-red-500 focus:border-red-500"
+                    className="form-input"
                   />
                 </div>
               )}
               
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
+                <label className="form-label">
                   Alert Frequency
                 </label>
                 <div className="space-y-2">
@@ -591,7 +591,7 @@ const AlertsManager: React.FC<AlertsManagerProps> = ({
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
+                <label className="form-label">
                   Notification Methods
                 </label>
                 <div className="space-y-2">
@@ -618,7 +618,7 @@ const AlertsManager: React.FC<AlertsManagerProps> = ({
               
               {newAlert.notifyEmail && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">
+                  <label className="form-label">
                     Email Address
                   </label>
                   <input
@@ -626,7 +626,7 @@ const AlertsManager: React.FC<AlertsManagerProps> = ({
                     value={emailAddress}
                     onChange={handleEmailChange}
                     placeholder="your@email.com"
-                    className={`w-full rounded-md border ${emailValid ? 'border-gray-600' : 'border-red-500'} bg-gray-700 shadow-sm px-3 py-2 text-gray-200 focus:outline-none focus:ring-red-500 focus:border-red-500`}
+                    className={`form-input ${!emailValid ? 'border-red-500' : ''}`}
                   />
                   {!emailValid && (
                     <p className="mt-1 text-xs text-red-500">Please enter a valid email address</p>
@@ -708,14 +708,14 @@ const AlertsManager: React.FC<AlertsManagerProps> = ({
               )}
               
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
+                <label className="form-label">
                   <Flag className="h-4 w-4 inline mr-1" />
                   Threat Tag (Optional)
                 </label>
                 <select
                   value={newAlert.threatTag}
                   onChange={(e) => setNewAlert({...newAlert, threatTag: e.target.value})}
-                  className="w-full rounded-md border border-gray-600 bg-gray-700 shadow-sm px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-red-500 focus:border-red-500"
+                  className="form-select"
                 >
                   <option value="">No threat tag</option>
                   <option value="phishing">Phishing</option>
@@ -730,14 +730,14 @@ const AlertsManager: React.FC<AlertsManagerProps> = ({
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
+                <label className="form-label">
                   <Flag className="h-4 w-4 inline mr-1" />
                   Country Tag (Optional)
                 </label>
                 <select
                   value={newAlert.countryTag}
                   onChange={(e) => setNewAlert({...newAlert, countryTag: e.target.value})}
-                  className="w-full rounded-md border border-gray-600 bg-gray-700 shadow-sm px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-red-500 focus:border-red-500"
+                  className="form-select"
                 >
                   <option value="">No country tag</option>
                   <option value="US">🇺🇸 USA</option>
@@ -762,13 +762,13 @@ const AlertsManager: React.FC<AlertsManagerProps> = ({
             <div className="mt-6 flex justify-end gap-3">
               <button
                 onClick={() => setShowCreateAlert(false)}
-                className="px-4 py-2 bg-gray-700 text-gray-300 rounded-md hover:bg-gray-600"
+                className="btn btn-secondary"
               >
                 Cancel
               </button>
               <button
                 onClick={handleCreateAlert}
-                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+                className="btn btn-danger"
                 disabled={!newAlert.name}
               >
                 Create Alert

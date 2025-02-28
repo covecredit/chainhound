@@ -4,8 +4,10 @@ import { zoom as d3Zoom } from 'd3-zoom';
 import { Transaction, Address, TransactionFlow } from '../types/transaction';
 import TransactionNode from './TransactionNode';
 import TransactionLink from './TransactionLink';
-import { Database, RefreshCw, ZoomIn, ZoomOut, Maximize2, Download, Search } from 'lucide-react';
+import { Database, RefreshCw, ZoomIn, ZoomOut, Maximize2, Download, Search, Info } from 'lucide-react';
 import JSZip from 'jszip';
+import { toPng, toSvg } from 'html-to-image';
+import { saveAs } from 'file-saver';
 
 interface BlockchainTransactionVisualizerProps {
   transactions?: Transaction[];
@@ -15,6 +17,16 @@ interface BlockchainTransactionVisualizerProps {
   refreshInterval?: number;
   onAddressSelect?: (address: string) => void;
 }
+
+// Transaction types with colors
+const TRANSACTION_TYPES = {
+  TRANSFER: { name: 'Transfer', color: '#3B82F6' }, // Blue
+  CONTRACT_CALL: { name: 'Contract Call', color: '#10B981' }, // Green
+  TOKEN_TRANSFER: { name: 'Token Transfer', color: '#F59E0B' }, // Yellow
+  BRIDGE: { name: 'Bridge', color: '#8B5CF6' }, // Purple
+  SWAP: { name: 'Swap', color: '#EC4899' }, // Pink
+  UNKNOWN: { name: 'Unknown', color: '#6B7280' } // Gray
+};
 
 const BlockchainTransactionVisualizer: React.FC<BlockchainTransactionVisualizerProps> = ({
   transactions: initialTransactions,
@@ -31,10 +43,44 @@ const BlockchainTransactionVisualizer: React.FC<BlockchainTransactionVisualizerP
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const [showLegend, setShowLegend] = useState<boolean>(true);
   
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const zoomRef = useRef<any>(null);
+  const legendRef = useRef<HTMLDivElement>(null);
+
+  // Determine transaction type based on transaction data
+  const getTransactionType = (tx: Transaction): keyof typeof TRANSACTION_TYPES => {
+    // Check if it's a bridge transaction
+    if (tx.crossChainRef && tx.crossChainRef.length > 0) {
+      return 'BRIDGE';
+    }
+    
+    // Check if it's a contract call (has input data)
+    if (tx.input && tx.input !== '0x') {
+      // Check if it's a token transfer (ERC20 transfer method signature)
+      if (tx.input.startsWith('0xa9059cbb')) {
+        return 'TOKEN_TRANSFER';
+      }
+      
+      // Check if it's a swap (common DEX method signatures)
+      if (tx.input.startsWith('0x38ed1739') || // swapExactTokensForTokens
+          tx.input.startsWith('0x7ff36ab5') || // swapExactETHForTokens
+          tx.input.startsWith('0x4a25d94a')) { // swapTokensForExactETH
+        return 'SWAP';
+      }
+      
+      return 'CONTRACT_CALL';
+    }
+    
+    // Simple ETH transfer
+    if (tx.value && parseFloat(tx.value) > 0) {
+      return 'TRANSFER';
+    }
+    
+    return 'UNKNOWN';
+  };
 
   // Process transactions to create a flow graph
   const processTransactions = (txs: Transaction[]) => {
@@ -66,12 +112,16 @@ const BlockchainTransactionVisualizer: React.FC<BlockchainTransactionVisualizerP
     
     const nodes = Array.from(addressMap.values());
     
-    // Create links with proper source and target references
-    const links = txs.map(tx => ({
-      ...tx,
-      source: tx.from,
-      target: tx.to
-    }));
+    // Create links with proper source and target references and transaction types
+    const links = txs.map(tx => {
+      const txType = getTransactionType(tx);
+      return {
+        ...tx,
+        source: tx.from,
+        target: tx.to,
+        type: txType
+      };
+    });
     
     setTransactionFlow({
       nodes,
@@ -173,18 +223,15 @@ const BlockchainTransactionVisualizer: React.FC<BlockchainTransactionVisualizerP
       .attr('fill', '#ef4444')
       .attr('d', 'M0,-5L10,0L0,5');
 
-    // Create links with different colors based on blockchain
+    // Create links with different colors based on transaction type
     const link = g.append('g')
       .selectAll('line')
       .data(links)
       .enter().append('line')
       .attr('stroke', (d: any) => {
-        // Color links based on blockchain
-        if (d.blockchain === 'bsc') return '#F0B90B'; // BSC yellow
-        if (d.blockchain === 'polygon') return '#8247E5'; // Polygon purple
-        if (d.blockchain === 'arbitrum') return '#28A0F0'; // Arbitrum blue
-        if (d.blockchain === 'optimism') return '#FF0420'; // Optimism red
-        return '#ef4444'; // Default red for Ethereum
+        // Color links based on transaction type
+        const txType = d.type || 'UNKNOWN';
+        return TRANSACTION_TYPES[txType].color;
       })
       .attr('stroke-opacity', 0.6)
       .attr('stroke-width', (d: any) => Math.sqrt(parseFloat(d.value) / 1e18) + 1)
@@ -356,96 +403,55 @@ const BlockchainTransactionVisualizer: React.FC<BlockchainTransactionVisualizerP
   };
 
   // Export visualization as PNG with full canvas
-  const exportAsPNG = async () => {
+  const exportVisualization = async () => {
     if (!svgRef.current) return;
     
     try {
-      // Create a canvas element for the visible area
-      const visibleCanvas = document.createElement('canvas');
-      const svg = svgRef.current;
-      const box = svg.getBoundingClientRect();
+      setLoading(true);
       
-      // Set canvas dimensions to match SVG
-      visibleCanvas.width = box.width;
-      visibleCanvas.height = box.height;
-      
-      const visibleContext = visibleCanvas.getContext('2d');
-      if (!visibleContext) return;
-      
-      // Fill with background color
-      visibleContext.fillStyle = '#1f2937';
-      visibleContext.fillRect(0, 0, visibleCanvas.width, visibleCanvas.height);
-      
-      // Create a canvas for the full visualization
-      const fullCanvas = document.createElement('canvas');
-      
-      // Get the SVG content
-      const data = new XMLSerializer().serializeToString(svg);
-      const svgBlob = new Blob([data], { type: 'image/svg+xml;charset=utf-8' });
-      const url = URL.createObjectURL(svgBlob);
-      
-      // Create image from SVG for visible area
-      const img = new Image();
-      
-      // Wait for the image to load
-      await new Promise((resolve) => {
-        img.onload = resolve;
-        img.src = url;
-      });
-      
-      // Draw visible area
-      visibleContext.drawImage(img, 0, 0);
-      
-      // For full visualization, we need to determine the bounds
-      // This is a simplified approach - in a real implementation, you'd calculate
-      // the actual bounds of all nodes and links
-      const svgWidth = Math.max(2000, box.width * 2);
-      const svgHeight = Math.max(2000, box.height * 2);
-      
-      fullCanvas.width = svgWidth;
-      fullCanvas.height = svgHeight;
-      
-      const fullContext = fullCanvas.getContext('2d');
-      if (!fullContext) return;
-      
-      // Fill with background color
-      fullContext.fillStyle = '#1f2937';
-      fullContext.fillRect(0, 0, fullCanvas.width, fullCanvas.height);
-      
-      // Draw the full visualization
-      // This is a simplified approach - in a fullContext.drawImage(img, (fullCanvas.width - box.width) / 2, (fullCanvas.height - box.height) / 2);
-      
-      // Convert canvases to PNG
-      const visiblePngUrl = visibleCanvas.toDataURL('image/png');
-      const fullPngUrl = fullCanvas.toDataURL('image/png');
-      
-      // Create a zip file with both images
+      // Create a zip file to store both visible and full visualizations
       const zip = new JSZip();
       
-      // Add the images to the zip
-      const visibleBlob = await (await fetch(visiblePngUrl)).blob();
-      const fullBlob = await (await fetch(fullPngUrl)).blob();
+      // Get the visible area as PNG
+      const visiblePng = await toPng(svgRef.current, {
+        backgroundColor: '#1f2937',
+        width: svgRef.current.clientWidth,
+        height: svgRef.current.clientHeight
+      });
       
-      zip.file("chainhound-visualization-visible.png", visibleBlob);
-      zip.file("chainhound-visualization-full.png", fullBlob);
+      // Get the SVG as text for full visualization
+      const svgText = await toSvg(svgRef.current, {
+        backgroundColor: '#1f2937',
+        width: svgRef.current.clientWidth,
+        height: svgRef.current.clientHeight
+      });
+      
+      // Add legend to the zip if it's visible
+      if (showLegend && legendRef.current) {
+        const legendPng = await toPng(legendRef.current, {
+          backgroundColor: '#1f2937'
+        });
+        zip.file("chainhound-visualization-legend.png", legendPng.split(',')[1], {base64: true});
+      }
+      
+      // Add the images to the zip
+      zip.file("chainhound-visualization-visible.png", visiblePng.split(',')[1], {base64: true});
+      zip.file("chainhound-visualization-full.svg", svgText);
+      
+      // Add transaction data as JSON
+      zip.file("transaction-data.json", JSON.stringify(transactions, null, 2));
       
       // Generate the zip file
       const zipBlob = await zip.generateAsync({type: "blob"});
       
       // Create download link
       const timestamp = new Date().toISOString().slice(0, 10);
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(zipBlob);
-      a.download = `chainhound-visualization-${timestamp}.zip`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      
-      // Clean up
-      URL.revokeObjectURL(url);
-      URL.revokeObjectURL(a.href);
+      saveAs(zipBlob, `chainhound-visualization-${timestamp}.zip`);
     } catch (error) {
       console.error("Error exporting visualization:", error);
+      setError("Failed to export visualization. Please try again.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -484,10 +490,17 @@ const BlockchainTransactionVisualizer: React.FC<BlockchainTransactionVisualizerP
             </div>
             <button 
               className="p-2 text-gray-300 hover:text-white bg-gray-700 rounded-md"
-              onClick={exportAsPNG}
-              title="Export as PNG"
+              onClick={exportVisualization}
+              title="Export Visualization"
             >
               <Download className="h-4 w-4" />
+            </button>
+            <button 
+              className="p-2 text-gray-300 hover:text-white bg-gray-700 rounded-md"
+              onClick={() => setShowLegend(!showLegend)}
+              title={showLegend ? "Hide Legend" : "Show Legend"}
+            >
+              <Info className="h-4 w-4" />
             </button>
             {onFetchTransactions && (
               <button 
@@ -536,6 +549,27 @@ const BlockchainTransactionVisualizer: React.FC<BlockchainTransactionVisualizerP
             ) : (
               <svg ref={svgRef} className="w-full h-full"></svg>
             )}
+            
+            {/* Transaction Type Legend */}
+            {showLegend && transactionFlow.nodes.length > 0 && (
+              <div 
+                ref={legendRef}
+                className="absolute top-4 left-4 bg-gray-800 p-3 rounded-md shadow-lg border border-gray-700 z-10"
+              >
+                <h3 className="text-sm font-medium text-white mb-2">Transaction Types</h3>
+                <div className="space-y-2">
+                  {Object.entries(TRANSACTION_TYPES).map(([key, value]) => (
+                    <div key={key} className="flex items-center gap-2">
+                      <div 
+                        className="w-4 h-4 rounded-full" 
+                        style={{ backgroundColor: value.color }}
+                      ></div>
+                      <span className="text-xs text-gray-300">{value.name}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -570,6 +604,8 @@ const BlockchainTransactionVisualizer: React.FC<BlockchainTransactionVisualizerP
                     transaction={transaction} 
                     highlighted={highlightedTransaction?.id === transaction.id}
                     onClick={handleTransactionClick}
+                    txType={transaction.type || 'UNKNOWN'}
+                    txTypes={TRANSACTION_TYPES}
                   />
                 ))
               )}

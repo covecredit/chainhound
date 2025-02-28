@@ -49,6 +49,43 @@ const COMMON_EVENT_ABI = [
     ],
     "name": "Approval",
     "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "name": "sender",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "name": "amount0In",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "name": "amount1In",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "name": "amount0Out",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "name": "amount1Out",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "name": "to",
+        "type": "address"
+      }
+    ],
+    "name": "Swap",
+    "type": "event"
   }
 ];
 
@@ -88,6 +125,41 @@ const CHAIN_CONFIG = {
     explorer: 'https://optimistic.etherscan.io',
     symbol: 'ETH',
     decimals: 18
+  },
+  avalanche: {
+    name: 'Avalanche',
+    rpcUrl: 'https://api.avax.network/ext/bc/C/rpc',
+    explorer: 'https://snowtrace.io',
+    symbol: 'AVAX',
+    decimals: 18
+  },
+  fantom: {
+    name: 'Fantom',
+    rpcUrl: 'https://rpc.ftm.tools',
+    explorer: 'https://ftmscan.com',
+    symbol: 'FTM',
+    decimals: 18
+  },
+  harmony: {
+    name: 'Harmony',
+    rpcUrl: 'https://api.harmony.one',
+    explorer: 'https://explorer.harmony.one',
+    symbol: 'ONE',
+    decimals: 18
+  },
+  cronos: {
+    name: 'Cronos',
+    rpcUrl: 'https://evm.cronos.org',
+    explorer: 'https://cronoscan.com',
+    symbol: 'CRO',
+    decimals: 18
+  },
+  moonbeam: {
+    name: 'Moonbeam',
+    rpcUrl: 'https://rpc.api.moonbeam.network',
+    explorer: 'https://moonbeam.moonscan.io',
+    symbol: 'GLMR',
+    decimals: 18
   }
 };
 
@@ -97,11 +169,24 @@ const BRIDGE_CONTRACTS = {
     '0x3ee18B2214AFF97000D974cf647E7C347E8fa585', // Wormhole
     '0xf92cD566Ea4864356C5491c177A430C222d7e678', // Arbitrum Bridge
     '0x99C9fc46f92E8a1c0deC1b1747d010903E884bE1', // Optimism Bridge
-    '0xa0c68c638235ee32657e8f720a23cec1bfc77c77'  // Polygon Bridge
+    '0xa0c68c638235ee32657e8f720a23cec1bfc77c77',  // Polygon Bridge
+    '0x8f5b1b6c96aa70e94d0e0956b894beac27b41d08'   // Avalanche Bridge
   ],
   bsc: [
     '0x98f3c9e6E3fAce36bAAd05FE09d375Ef1464288B', // Wormhole
     '0x0000000000000000000000000000000000001004'  // BSC Bridge
+  ],
+  polygon: [
+    '0x7D1AfA7B718fb893dB30A3aBc0Cfc608AaCfeBB0', // Polygon Bridge
+    '0x5a58505a96D1dbf8dF91cB21B54419FC36e93fdE'  // Polygon PoS Bridge
+  ],
+  arbitrum: [
+    '0x4Dbd4fc535Ac27206064B68FfCf827b0A60BAB3f', // Arbitrum Bridge
+    '0x8315177aB297bA92A06054cE80a67Ed4DBd7ed3a'  // Arbitrum Gateway
+  ],
+  avalanche: [
+    '0xE78388b4CE79068e89Bf8aA7f218eF6b9AB0e9d0', // Avalanche Bridge
+    '0x8EB8a3b98659Cce290402893d0123abb75E3ab28'  // Avalanche-Ethereum Bridge
   ]
 };
 
@@ -109,7 +194,14 @@ const BRIDGE_CONTRACTS = {
 const CROSS_CHAIN_ADDRESSES = {
   '0xbdd077f651ebe7f7b3ce16fe5f2b025be2969516': {
     ethereum: '0xbdd077f651ebe7f7b3ce16fe5f2b025be2969516',
-    bsc: '0xbdd077f651ebe7f7b3ce16fe5f2b025be2969516'
+    bsc: '0xbdd077f651ebe7f7b3ce16fe5f2b025be2969516',
+    polygon: '0xbdd077f651ebe7f7b3ce16fe5f2b025be2969516',
+    arbitrum: '0xbdd077f651ebe7f7b3ce16fe5f2b025be2969516'
+  },
+  '0x0fa09c3a328792253f8dee7116848723b72a6d2e': {
+    ethereum: '0x0fa09c3a328792253f8dee7116848723b72a6d2e',
+    bsc: '0x0fa09c3a328792253f8dee7116848723b72a6d2e',
+    polygon: '0x0fa09c3a328792253f8dee7116848723b72a6d2e'
   }
 };
 
@@ -128,7 +220,7 @@ class Web3Service {
           this.web3Instances[chain] = new Web3(config.rpcUrl);
           this.ethersProviders[chain] = new ethers.JsonRpcProvider(config.rpcUrl);
         } catch (error) {
-          console.error(`Error initializing ${chain} provider:`, error);
+          console.warn(`Error initializing ${chain} provider, using fallback:`, error);
           // Fallback to a dummy provider that will return sample data
           this.web3Instances[chain] = new Web3('http://localhost:8545');
           this.ethersProviders[chain] = new ethers.JsonRpcProvider('http://localhost:8545');
@@ -141,7 +233,7 @@ class Web3Service {
         this.ethersProviders.ethereum = new ethers.JsonRpcProvider(provider);
       }
     } catch (error) {
-      console.error("Error initializing Web3Service:", error);
+      console.warn("Error initializing Web3Service, using fallback:", error);
       // Fallback to a dummy provider that will return sample data
       this.web3Instances.ethereum = new Web3('http://localhost:8545');
       this.ethersProviders.ethereum = new ethers.JsonRpcProvider('http://localhost:8545');
@@ -154,7 +246,10 @@ class Web3Service {
       this.web3Instances[chain] = new Web3(provider);
       this.ethersProviders[chain] = new ethers.JsonRpcProvider(provider);
     } catch (error) {
-      console.error(`Error setting provider for ${chain}:`, error);
+      console.warn(`Error setting provider for ${chain}, using fallback:`, error);
+      // Fallback to a dummy provider
+      this.web3Instances[chain] = new Web3('http://localhost:8545');
+      this.ethersProviders[chain] = new ethers.JsonRpcProvider('http://localhost:8545');
     }
   }
 
@@ -173,7 +268,7 @@ class Web3Service {
     try {
       return ethers.isAddress(address);
     } catch (error) {
-      console.error("Error validating address:", error);
+      console.warn("Error validating address:", error);
       return false;
     }
   }
@@ -183,7 +278,7 @@ class Web3Service {
     try {
       return ethers.getAddress(address);
     } catch (error) {
-      console.error("Error formatting address:", error);
+      console.warn("Error formatting address:", error);
       return address;
     }
   }
@@ -193,7 +288,7 @@ class Web3Service {
     try {
       return await this.web3Instances[chain].eth.getBlockNumber();
     } catch (error) {
-      console.error(`Error getting latest block number for ${chain}:`, error);
+      console.warn(`Error getting latest block number for ${chain}, using fallback:`, error);
       // Return a fallback block number to prevent further errors
       return chain === 'bsc' ? 30000000 : 17000000; // Use recent block numbers as fallback
     }
@@ -225,11 +320,12 @@ class Web3Service {
         timestamp: Number(block.timestamp), // Convert to number to avoid BigInt issues
         hash: tx.hash,
         blockNumber: blockNumber,
-        blockchain: chain
+        blockchain: chain,
+        input: tx.input || '0x'
       }));
     } catch (error) {
-      console.error(`Error fetching transactions from block on ${chain}:`, error);
-      return []; // Return empty array instead of throwing
+      console.warn(`Error fetching transactions from block on ${chain}, using fallback:`, error);
+      return this.getSampleTransactions(5, chain); // Return sample data instead of throwing
     }
   }
 
@@ -248,7 +344,7 @@ class Web3Service {
           const blockTxs = await this.getTransactionsFromBlock(currentBlock, chain);
           transactions = [...transactions, ...blockTxs];
         } catch (err) {
-          console.error(`Error fetching block ${currentBlock} on ${chain}:`, err);
+          console.warn(`Error fetching block ${currentBlock} on ${chain}:`, err);
         }
         
         currentBlock--;
@@ -263,7 +359,7 @@ class Web3Service {
       // Return only the requested number of transactions
       return transactions.slice(0, count);
     } catch (error) {
-      console.error(`Error fetching latest transactions on ${chain}:`, error);
+      console.warn(`Error fetching latest transactions on ${chain}, using fallback:`, error);
       // Return sample transactions to prevent UI from breaking
       return this.getSampleTransactions(count, chain);
     }
@@ -288,7 +384,7 @@ class Web3Service {
       // For demo purposes, just return sample transactions
       return this.getSampleTransactionsForAddress(count, checksumAddress, chain);
     } catch (error) {
-      console.error(`Error fetching address transactions on ${chain}:`, error);
+      console.warn(`Error fetching address transactions on ${chain}, using fallback:`, error);
       return this.getSampleTransactionsForAddress(count, address, chain);
     }
   }
@@ -305,12 +401,16 @@ class Web3Service {
       const checksumAddress = this.formatAddress(address);
       
       // Get transactions from multiple chains
-      const chains = ['ethereum', 'bsc'];
+      const chains = Object.keys(CHAIN_CONFIG).slice(0, 3); // Limit to first 3 chains for performance
       let allTransactions: Transaction[] = [];
       
       for (const chain of chains) {
-        const txs = await this.getAddressTransactions(checksumAddress, count, chain);
-        allTransactions = [...allTransactions, ...txs];
+        try {
+          const txs = await this.getAddressTransactions(checksumAddress, Math.ceil(count / chains.length), chain);
+          allTransactions = [...allTransactions, ...txs];
+        } catch (err) {
+          console.warn(`Error fetching ${chain} transactions:`, err);
+        }
       }
       
       // Sort by timestamp (newest first)
@@ -321,8 +421,8 @@ class Web3Service {
       
       return enhancedTransactions.slice(0, count);
     } catch (error) {
-      console.error('Error fetching cross-chain transactions:', error);
-      return [];
+      console.warn('Error fetching cross-chain transactions, using fallback:', error);
+      return this.getSampleTransactions(count);
     }
   }
 
@@ -393,7 +493,7 @@ class Web3Service {
       const knownAddresses = CROSS_CHAIN_ADDRESSES[checksumAddress.toLowerCase()];
       
       // Get information from multiple chains
-      const chains = ['ethereum', 'bsc'];
+      const chains = Object.keys(CHAIN_CONFIG).slice(0, 3); // Limit to first 3 chains for performance
       const blockchainInfo = [];
       
       for (const chain of chains) {
@@ -422,7 +522,7 @@ class Web3Service {
             lastActivity
           });
         } catch (err) {
-          console.error(`Error getting ${chain} info for address ${chainAddress}:`, err);
+          console.warn(`Error getting ${chain} info for address ${chainAddress}:`, err);
           // Add placeholder data
           blockchainInfo.push({
             name: chain,
@@ -438,8 +538,25 @@ class Web3Service {
         blockchains: blockchainInfo
       };
     } catch (error) {
-      console.error('Error fetching cross-chain address info:', error);
-      throw error;
+      console.warn('Error fetching cross-chain address info, using fallback:', error);
+      // Return fallback data
+      return {
+        address: address,
+        blockchains: [
+          {
+            name: 'ethereum',
+            balance: '0.5',
+            txCount: 10,
+            lastActivity: Math.floor(Date.now() / 1000) - 86400 // 1 day ago
+          },
+          {
+            name: 'bsc',
+            balance: '2.3',
+            txCount: 5,
+            lastActivity: Math.floor(Date.now() / 1000) - 172800 // 2 days ago
+          }
+        ]
+      };
     }
   }
 
@@ -458,12 +575,12 @@ class Web3Service {
         const balance = await this.web3Instances[chain].eth.getBalance(checksumAddress);
         return this.web3Instances[chain].utils.fromWei(balance, 'ether');
       } catch (err) {
-        console.error(`Error getting balance on ${chain}:`, err);
+        console.warn(`Error getting balance on ${chain}, using fallback:`, err);
         return (Math.random() * 10).toFixed(4); // Return random balance for demo
       }
     } catch (error) {
-      console.error(`Error fetching address balance on ${chain}:`, error);
-      return "0";
+      console.warn(`Error fetching address balance on ${chain}, using fallback:`, error);
+      return (Math.random() * 5).toFixed(4); // Return random balance for demo
     }
   }
 
@@ -482,12 +599,12 @@ class Web3Service {
         const code = await this.web3Instances[chain].eth.getCode(checksumAddress);
         return code === '0x' ? 'Not a contract' : code;
       } catch (err) {
-        console.error(`Error getting contract code on ${chain}:`, err);
+        console.warn(`Error getting contract code on ${chain}, using fallback:`, err);
         // Return sample bytecode for demo
-        return "0x608060405234801561001057600080fd5b50600436106100415760003560e01c8063251c1aa3146100465780635c60da1b146100645780638f28397014610082575b600080fd5b61004e61009e565b60405161005b919061024a565b60405180910390f35b61006c6100a4565b60405161007991906101f1565b60405180910390f35b61009c600480360381019061009791906101b8565b6100c8565b005b60005481565b60008060009054906101000a900473ffffffffffffffffffffffffffffffffffffffff16905090565b806000806101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff1602179055506000808273ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16815260200190815260200160002060006101000a81548160ff0219169083151502179055505050565b60008135905061016d816102a6565b92915050565b60008151905061018281610...";
+        return "0x608060405234801561001057600080fd5b50600436106100415760003560e01c8063251c1aa3146100465780635c60da1b146100645780638f28397014610082575b600080fd5b61004e61009e565b60405161005b919061024a565b60405180910390f35b61006c6100a4565b60405161007991906101f1565b60405180910390f35b61009c600480360381019061009791906101b8565b6100c8565b005b60005481565b60008060009054906101000a900473ffffffffffffffffffffffffffffffffffffffff16905090565b806000806101000a81 548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff1602179055506000808273ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16815260200190815260200160002060006101000a81548160ff0219169083151502179055505050565b60008135905061016d816102a6565b92915050565b60008151905061018281610...";
       }
     } catch (error) {
-      console.error(`Error fetching contract bytecode on ${chain}:`, error);
+      console.warn(`Error fetching contract bytecode on ${chain}, using fallback:`, error);
       return "Error fetching bytecode";
     }
   }
@@ -507,16 +624,18 @@ class Web3Service {
         const code = await this.web3Instances[chain].eth.getCode(checksumAddress);
         return code !== '0x';
       } catch (err) {
-        console.error(`Error checking if address is a contract on ${chain}:`, err);
+        console.warn(`Error checking if address is a contract on ${chain}, using fallback:`, err);
         // For demo purposes, assume some addresses are contracts
         const knownContracts = [
           '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2',
-          '0x7a250d5630b4cf539739df2c5dacb4c659f2488d'
+          '0x7a250d5630b4cf539739df2c5dacb4c659f2488d',
+          '0xbdd077f651ebe7f7b3ce16fe5f2b025be2969516',
+          '0x96221423681a6d52e184d440a8efcebb105c7242'
         ];
         return knownContracts.includes(checksumAddress.toLowerCase());
       }
     } catch (error) {
-      console.error(`Error checking if address is a contract on ${chain}:`, error);
+      console.warn(`Error checking if address is a contract on ${chain}, using fallback:`, error);
       return false;
     }
   }
@@ -534,11 +653,11 @@ class Web3Service {
           blockchain: chain
         };
       } catch (err) {
-        console.error(`Error getting transaction details on ${chain}:`, err);
+        console.warn(`Error getting transaction details on ${chain}, using fallback:`, err);
         return null;
       }
     } catch (error) {
-      console.error(`Error fetching transaction details on ${chain}:`, error);
+      console.warn(`Error fetching transaction details on ${chain}, using fallback:`, error);
       return null;
     }
   }
@@ -560,10 +679,23 @@ class Web3Service {
         return this.getSampleEvents(contractAddress, chain);
       }
       
-      // For demo purposes, just return sample events
-      return this.getSampleEvents(contractAddress, chain);
+      try {
+        // In a real implementation, you would use web3 or ethers to get events
+        // For example:
+        // const contract = new this.web3Instances[chain].eth.Contract(COMMON_EVENT_ABI, checksumAddress);
+        // const events = await contract.getPastEvents('allEvents', {
+        //   fromBlock: fromBlock || 0,
+        //   toBlock: toBlock || 'latest'
+        // });
+        
+        // For demo purposes, just return sample events
+        return this.getSampleEvents(contractAddress, chain);
+      } catch (err) {
+        console.warn(`Error getting contract events on ${chain}, using fallback:`, err);
+        return this.getSampleEvents(contractAddress, chain);
+      }
     } catch (error) {
-      console.error(`Error fetching contract events on ${chain}:`, error);
+      console.warn(`Error fetching contract events on ${chain}, using fallback:`, error);
       return this.getSampleEvents(contractAddress, chain);
     }
   }
@@ -584,6 +716,14 @@ class Web3Service {
     // Add bridge contracts for cross-chain transactions
     const bridgeContracts = BRIDGE_CONTRACTS[chain as keyof typeof BRIDGE_CONTRACTS] || [];
     
+    // Sample input data for different transaction types
+    const sampleInputs = {
+      TRANSFER: '0x', // Simple ETH transfer has empty input
+      CONTRACT_CALL: '0x23b872dd000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000', // transferFrom
+      TOKEN_TRANSFER: '0xa9059cbb0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a', // transfer
+      SWAP: '0x38ed17390000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000000', // swapExactTokensForTokens
+    };
+    
     return Array.from({ length: count }, (_, i) => {
       const fromIndex = Math.floor(Math.random() * sampleAddresses.length);
       let toIndex = Math.floor(Math.random() * sampleAddresses.length);
@@ -597,6 +737,26 @@ class Web3Service {
       const value = (Math.random() * 10).toFixed(18);
       const timestamp = now - i * 3600; // 1 hour apart
       
+      // Determine transaction type
+      let txType = 'TRANSFER';
+      let input = sampleInputs.TRANSFER;
+      
+      if (Math.random() < 0.3) {
+        txType = 'CONTRACT_CALL';
+        input = sampleInputs.CONTRACT_CALL;
+      } else if (Math.random() < 0.5) {
+        txType = 'TOKEN_TRANSFER';
+        input = sampleInputs.TOKEN_TRANSFER;
+      } else if (Math.random() < 0.2) {
+        txType = 'SWAP';
+        input = sampleInputs.SWAP;
+      }
+      
+      // If it's a bridge transaction, override the type
+      if (useBridge) {
+        txType = 'BRIDGE';
+      }
+      
       const tx: Transaction = {
         id: `sample-${chain}-${i}`,
         from: sampleAddresses[fromIndex],
@@ -605,12 +765,15 @@ class Web3Service {
         timestamp: timestamp,
         hash: `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`,
         blockNumber: chain === 'bsc' ? 30000000 - i : 17000000 - i,
-        blockchain: chain
+        blockchain: chain,
+        input,
+        type: txType
       };
       
       // Add cross-chain reference for bridge transactions
       if (useBridge) {
-        const otherChain = chain === 'ethereum' ? 'bsc' : 'ethereum';
+        const otherChains = Object.keys(CHAIN_CONFIG).filter(c => c !== chain);
+        const otherChain = otherChains[Math.floor(Math.random() * otherChains.length)];
         tx.crossChainRef = [{
           blockchain: otherChain,
           hash: `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`
@@ -635,6 +798,14 @@ class Web3Service {
     // Add bridge contracts for cross-chain transactions
     const bridgeContracts = BRIDGE_CONTRACTS[chain as keyof typeof BRIDGE_CONTRACTS] || [];
     
+    // Sample input data for different transaction types
+    const sampleInputs = {
+      TRANSFER: '0x', // Simple ETH transfer has empty input
+      CONTRACT_CALL: '0x23b872dd000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000', // transferFrom
+      TOKEN_TRANSFER: '0xa9059cbb0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a', // transfer
+      SWAP: '0x38ed17390000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000000', // swapExactTokensForTokens
+    };
+    
     return Array.from({ length: count }, (_, i) => {
       // Alternate between incoming and outgoing transactions
       const isIncoming = i % 2 === 0;
@@ -648,6 +819,26 @@ class Web3Service {
       const value = (Math.random() * 10).toFixed(18);
       const timestamp = now - i * 3600; // 1 hour apart
       
+      // Determine transaction type
+      let txType = 'TRANSFER';
+      let input = sampleInputs.TRANSFER;
+      
+      if (Math.random() < 0.3) {
+        txType = 'CONTRACT_CALL';
+        input = sampleInputs.CONTRACT_CALL;
+      } else if (Math.random() < 0.5) {
+        txType = 'TOKEN_TRANSFER';
+        input = sampleInputs.TOKEN_TRANSFER;
+      } else if (Math.random() < 0.2) {
+        txType = 'SWAP';
+        input = sampleInputs.SWAP;
+      }
+      
+      // If it's a bridge transaction, override the type
+      if (useBridge) {
+        txType = 'BRIDGE';
+      }
+      
       const tx: Transaction = {
         id: `sample-${chain}-${address}-${i}`,
         from: isIncoming ? otherParty : address,
@@ -656,12 +847,15 @@ class Web3Service {
         timestamp: timestamp,
         hash: `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`,
         blockNumber: chain === 'bsc' ? 30000000 - i : 17000000 - i,
-        blockchain: chain
+        blockchain: chain,
+        input,
+        type: txType
       };
       
       // Add cross-chain reference for bridge transactions
       if (useBridge) {
-        const otherChain = chain === 'ethereum' ? 'bsc' : 'ethereum';
+        const otherChains = Object.keys(CHAIN_CONFIG).filter(c => c !== chain);
+        const otherChain = otherChains[Math.floor(Math.random() * otherChains.length)];
         tx.crossChainRef = [{
           blockchain: otherChain,
           hash: `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`
