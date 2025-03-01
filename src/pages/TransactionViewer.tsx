@@ -152,11 +152,13 @@ const TransactionViewer = () => {
         const isUnlimitedTransactions = searchOptions.maxTransactions >= UNLIMITED_TRANSACTIONS;
         
         // Get blocks to scan - ensure we don't exceed MAX_BLOCKS
-        const blocksToScan = Math.min(searchOptions.maxBlocks, MAX_BLOCKS, blockNumber);
-        const startBlock = Math.max(1, Number(blockNumber) - blocksToScan);
+        // Convert blockNumber to a regular number to avoid BigInt issues
+        const currentBlockNumber = Number(blockNumber);
+        const blocksToScan = Math.min(searchOptions.maxBlocks, MAX_BLOCKS, currentBlockNumber);
+        const startBlock = Math.max(1, currentBlockNumber - blocksToScan);
         
         if (debugMode) {
-          console.log(`[ChainHound Debug] Scanning from block ${startBlock} to ${blockNumber}`);
+          console.log(`[ChainHound Debug] Scanning from block ${startBlock} to ${currentBlockNumber}`);
           if (isUnlimitedTransactions) console.log(`[ChainHound Debug] Unlimited transaction collection enabled`);
         }
         
@@ -169,13 +171,13 @@ const TransactionViewer = () => {
         // Check which blocks are already cached if using cache
         let cachedBlockNumbers: number[] = [];
         if (searchOptions.useCachedBlocks) {
-          cachedBlockNumbers = await blockCache.getCachedBlockNumbers(startBlock, Number(blockNumber));
+          cachedBlockNumbers = await blockCache.getCachedBlockNumbers(startBlock, currentBlockNumber);
           if (debugMode) {
             console.log(`[ChainHound Debug] Found ${cachedBlockNumbers.length} cached blocks`);
           }
         }
         
-        for (let i = Number(blockNumber); i >= startBlock; i -= batchSize) {
+        for (let i = currentBlockNumber; i >= startBlock; i -= batchSize) {
           // Check if we've reached the transaction limit (unless unlimited)
           if (!isUnlimitedTransactions && transactionsFound >= searchOptions.maxTransactions) {
             searchLimitReached = true;
