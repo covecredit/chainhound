@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Download, Camera, Info, AlertTriangle, Loader, Clock, X, Settings, ChevronDown, ChevronUp, Trash2, Infinity } from 'lucide-react';
+import { Search, Download, Camera, Info, AlertTriangle, Loader, Clock, X, Settings, ChevronDown, ChevronUp, Trash2, Infinity, StopCircle, RefreshCw } from 'lucide-react';
 import * as d3 from 'd3';
 import { toPng } from 'html-to-image';
 import TransactionGraph from '../components/TransactionGraph';
@@ -18,6 +18,17 @@ interface SearchOptions {
   maxBlocks: number;
   maxTransactions: number;
   includeInternalTxs: boolean;
+  retryErroredBlocks: boolean;
+}
+
+interface SearchProgress {
+  currentBlock: number;
+  startBlock: number;
+  endBlock: number;
+  blocksProcessed: number;
+  totalBlocks: number;
+  transactionsFound: number;
+  errors: number;
 }
 
 const TransactionViewer = () => {
@@ -32,9 +43,12 @@ const TransactionViewer = () => {
   const [searchOptions, setSearchOptions] = useState<SearchOptions>({
     maxBlocks: 1000,
     maxTransactions: 50,
-    includeInternalTxs: true
+    includeInternalTxs: true,
+    retryErroredBlocks: true
   });
   const [selectedNodeDetails, setSelectedNodeDetails] = useState<any>(null);
+  const [searchProgress, setSearchProgress] = useState<SearchProgress | null>(null);
+  const [cancelSearch, setCancelSearch] = useState(false);
   const graphRef = useRef<HTMLDivElement>(null);
   const searchHistoryRef = useRef<HTMLDivElement>(null);
   const advancedOptionsRef = useRef<HTMLDivElement>(null);
@@ -108,6 +122,8 @@ const TransactionViewer = () => {
     setError('');
     setTransactionData(null);
     setSelectedNodeDetails(null);
+    setSearchProgress(null);
+    setCancelSearch(false);
     
     try {
       // Add to recent searches
@@ -162,13 +178,43 @@ const TransactionViewer = () => {
             if (isUnlimitedTransactions) console.log(`[ChainHound Debug] Unlimited transaction collection enabled`);
           }
           
+          // Initialize search progress
+          setSearchProgress({
+            currentBlock: Number(blockNumber),
+            startBlock: startBlockNum,
+            endBlock: Number(blockNumber),
+            blocksProcessed: 0,
+            totalBlocks: Number(blockNumber) - startBlockNum + 1,
+            transactionsFound: 0,
+            errors: 0
+          });
+          
           // Get blocks in batches to avoid timeout
           const batchSize = 10;
           const transactions = [];
           let transactionsFound = 0;
           let searchLimitReached = false;
+          let errorsCount = 0;
+          
+          // Get errored blocks if retry option is enabled
+          let erroredBlocks: number[] = [];
+          if (searchOptions.retryErroredBlocks) {
+            const errorBlocks = await blockCache.getErrorBlocksInRange(startBlockNum, Number(blockNumber));
+            erroredBlocks = errorBlocks.map(block => block.blockNumber);
+            if (debugMode && erroredBlocks.length > 0) {
+              console.log(`[ChainHound Debug] Found ${erroredBlocks.length} errored blocks to retry`);
+            }
+          }
           
           for (let i = Number(blockNumber); i >= startBlockNum; i -= batchSize) {
+            // Check if search was cancelled
+            if (cancelSearch) {
+              if (debugMode) {
+                console.log(`[ChainHound Debug] Search cancelled by user`);
+              }
+              throw new Error('Search cancelled by user');
+            }
+            
             // Check if we've reached the transaction limit (unless unlimited)
             if (!isUnlimitedTransactions && transactionsFound >= searchOptions.maxTransactions) {
               searchLimitReached = true;
@@ -183,12 +229,25 @@ const TransactionViewer = () => {
             }
             
             try {
+              // Update search progress
+              setSearchProgress(prev => {
+                if (!prev) return null;
+                return {
+                  ...prev,
+                  currentBlock: endBlock,
+                  blocksProcessed: prev.blocksProcessed + (endBlock - startBatchBlock + 1),
+                  transactionsFound,
+                  errors: errorsCount
+                };
+              });
+              
               // Check if blocks are in cache first
               const cachedBlockNumbers = await blockCache.getCachedBlockNumbers(startBatchBlock, endBlock);
               const blocksToFetch = [];
               
               for (let j = endBlock; j >= startBatchBlock; j--) {
-                if (!cachedBlockNumbers.includes(j)) {
+                // Include blocks that are not cached or are in the errored blocks list (if retry is enabled)
+                if (!cachedBlockNumbers.includes(j) || (searchOptions.retryErroredBlocks && erroredBlocks.includes(j))) {
                   blocksToFetch.push(j);
                 }
               }
@@ -212,6 +271,17 @@ const TransactionViewer = () => {
                     }
                     // Record the error in the cache
                     blockCache.recordErrorBlock(blockNum, 'fetch_error', err.message || 'Unknown error');
+                    errorsCount++;
+                    
+                    // Update search progress with error count
+                    setSearchProgress(prev => {
+                      if (!prev) return null;
+                      return {
+                        ...prev,
+                        errors: errorsCount
+                      };
+                    });
+                    
                     return null;
                   })
               );
@@ -241,6 +311,15 @@ const TransactionViewer = () => {
                   transactions.push(...txsWithTimestamp);
                   transactionsFound += relatedTxs.length;
                   
+                  // Update search progress with transaction count
+                  setSearchProgress(prev => {
+                    if (!prev) return null;
+                    return {
+                      ...prev,
+                      transactionsFound
+                    };
+                  });
+                  
                   // Check if we've reached the transaction limit (unless unlimited)
                   if (!isUnlimitedTransactions && transactionsFound >= searchOptions.maxTransactions) {
                     searchLimitReached = true;
@@ -253,6 +332,17 @@ const TransactionViewer = () => {
               }
             } catch (error) {
               console.error('Error processing block batch:', error);
+              errorsCount++;
+              
+              // Update search progress with error count
+              setSearchProgress(prev => {
+                if (!prev) return null;
+                return {
+                  ...prev,
+                  errors: errorsCount
+                };
+              });
+              
               if (debugMode) {
                 console.log(`[ChainHound Debug] Error processing block batch:`, error);
               }
@@ -263,6 +353,7 @@ const TransactionViewer = () => {
           
           if (debugMode) {
             console.log(`[ChainHound Debug] Found ${transactions.length} related transactions`);
+            console.log(`[ChainHound Debug] Encountered ${errorsCount} errors during search`);
           }
           
           // Determine how many transactions to display
@@ -277,7 +368,8 @@ const TransactionViewer = () => {
             transactionCount: txCount,
             isContract,
             transactions: displayTransactions,
-            searchLimitReached
+            searchLimitReached,
+            errorsCount
           };
           
           if (debugMode) {
@@ -380,6 +472,7 @@ const TransactionViewer = () => {
       setTransactionData(null);
     } finally {
       setIsLoading(false);
+      setSearchProgress(null);
     }
   };
   
@@ -537,6 +630,17 @@ const TransactionViewer = () => {
   // Handle node click in the graph
   const handleNodeClick = (node: any) => {
     setSelectedNodeDetails(node);
+  };
+  
+  // Calculate search progress percentage
+  const calculateProgressPercentage = () => {
+    if (!searchProgress) return 0;
+    return Math.min(100, Math.round((searchProgress.blocksProcessed / searchProgress.totalBlocks) * 100));
+  };
+  
+  // Handle cancel search
+  const handleCancelSearch = () => {
+    setCancelSearch(true);
   };
   
   // Render details for the selected node
@@ -804,6 +908,19 @@ const TransactionViewer = () => {
                         Include internal transactions
                       </label>
                     </div>
+                    
+                    <div className="flex items-center">
+                      <input 
+                        type="checkbox"
+                        id="retryErroredBlocks"
+                        checked={searchOptions.retryErroredBlocks}
+                        onChange={(e) => updateSearchOptions({ retryErroredBlocks: e.target.checked })}
+                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600"
+                      />
+                      <label htmlFor="retryErroredBlocks" className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
+                        Retry previously errored blocks
+                      </label>
+                    </div>
                   </div>
                 </div>
               )}
@@ -826,7 +943,46 @@ const TransactionViewer = () => {
                 </>
               )}
             </button>
+            
+            {isLoading && (
+              <button 
+                onClick={handleCancelSearch}
+                className="bg-red-600 text-white py-2 px-4 rounded hover:bg-red-700 transition flex items-center justify-center"
+              >
+                <StopCircle className="h-5 w-5 mr-1" />
+                <span>Cancel</span>
+              </button>
+            )}
           </div>
+          
+          {/* Search progress bar */}
+          {searchProgress && (
+            <div className="mt-2">
+              <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400 mb-1">
+                <span>Scanning blocks {searchProgress.currentBlock} to {searchProgress.startBlock}</span>
+                <span>{calculateProgressPercentage()}% complete</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
+                <div 
+                  className="bg-indigo-600 h-2.5 rounded-full" 
+                  style={{ width: `${calculateProgressPercentage()}%` }}
+                ></div>
+              </div>
+              <div className="flex justify-between text-xs mt-1">
+                <span className="text-gray-600 dark:text-gray-400">
+                  Processed {searchProgress.blocksProcessed} of {searchProgress.totalBlocks} blocks
+                </span>
+                <span className="text-indigo-600 dark:text-indigo-400">
+                  Found {searchProgress.transactionsFound} transactions
+                </span>
+                {searchProgress.errors > 0 && (
+                  <span className="text-red-600 dark:text-red-400">
+                    {searchProgress.errors} errors
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
           
           {error && (
             <div className="mt-4 p-3 bg-red-100 text-red-700 rounded flex items-start dark:bg-red-900 dark:text-red-200">
@@ -877,35 +1033,40 @@ const TransactionViewer = () => {
               </div>
             )}
             
-            <div className="flex flex-col lg:flex-row gap-4">
-              <div className="lg:w-3/4">
-                <div ref={graphRef} className="border rounded-lg p-4 bg-gray-50 h-[500px] dark:bg-gray-900 dark:border-gray-700">
-                  <TransactionGraph data={transactionData} onNodeClick={handleNodeClick} />
-                </div>
+            {transactionData.errorsCount > 0 && (
+              <div className="mb-4 p-2 bg-red-50 text-red-700 rounded-md text-sm flex items-center dark:bg-red-900/30 dark:text-red-200">
+                <AlertTriangle className="h-4 w-4 mr-2" />
+                <span>
+                  Encountered {transactionData.errorsCount} errors while fetching blocks. 
+                  Some data may be missing.
+                </span>
               </div>
-              <div className="lg:w-1/4 flex flex-col gap-4">
-                <div className="border rounded-lg p-4 bg-gray-50 h-[250px] overflow-y-auto dark:bg-gray-900 dark:border-gray-700">
-                  <h3 className="font-semibold mb-2 flex items-center">
-                    <Info className="h-4 w-4 mr-1" />
-                    Legend
-                  </h3>
-                  <TransactionLegend />
-                </div>
-                
-                <div className="border rounded-lg p-4 bg-gray-50 dark:bg-gray-900 dark:border-gray-700">
-                  <h3 className="font-semibold mb-4 flex items-center">
-                    <Info className="h-4 w-4 mr-1" />
-                    Node Details
-                  </h3>
-                  {selectedNodeDetails ? (
-                    renderNodeDetails()
-                  ) : (
-                    <div className="text-center py-4 text-gray-500 dark:text-gray-400">
-                      <p>Click on a node in the graph to view details</p>
-                    </div>
-                  )}
-                </div>
+            )}
+            
+            <div className="relative border rounded-lg p-4 bg-gray-50 h-[500px] dark:bg-gray-900 dark:border-gray-700">
+              <div ref={graphRef} className="w-full h-full">
+                <TransactionGraph data={transactionData} onNodeClick={handleNodeClick} />
               </div>
+              
+              {/* Legend inside the graph */}
+              <div className="absolute bottom-4 left-4 bg-white/90 dark:bg-gray-800/90 p-3 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
+                <TransactionLegend />
+              </div>
+            </div>
+            
+            {/* Node details beneath the graph */}
+            <div className="mt-4 border rounded-lg p-4 bg-gray-50 dark:bg-gray-900 dark:border-gray-700">
+              <h3 className="font-semibold mb-4 flex items-center">
+                <Info className="h-4 w-4 mr-1" />
+                Node Details
+              </h3>
+              {selectedNodeDetails ? (
+                renderNodeDetails()
+              ) : (
+                <div className="text-center py-4 text-gray-500 dark:text-gray-400">
+                  <p>Click on a node in the graph to view details</p>
+                </div>
+              )}
             </div>
           </div>
         </>

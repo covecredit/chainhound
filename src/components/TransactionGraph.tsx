@@ -231,9 +231,9 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick }
         .attr('cursor', 'pointer')
         .text((d: any) => {
           if (d.type === 'address' || d.type === 'contract') {
-            return `${d.id.substring(0, 6)}...${d.id.substring(d.id.length - 4)}`;
+            return d.id;
           } else if (d.type === 'transaction') {
-            return d.hash ? `${d.hash.substring(0, 6)}...` : 'TX';
+            return d.hash ? d.hash : 'TX';
           } else if (d.type === 'block') {
             return `Block #${d.blockNumber}`;
           }
@@ -350,7 +350,7 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick }
           data.transactions.forEach((tx: any, index: number) => {
             if (!tx || !tx.hash) return; // Skip invalid transactions
             
-            const txId = `tx-${index}-${tx.hash.substring(0, 8)}`;
+            const txId = `tx-${index}-${tx.hash}`;
             addNode(txId, 'transaction', { 
               value: tx.value, 
               hash: tx.hash, 
@@ -463,7 +463,7 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick }
         if (!tx) return { nodes: [], links: [] };
         
         // Add transaction node
-        const txId = `tx-${tx.hash ? tx.hash.substring(0, 8) : 'unknown'}`;
+        const txId = `tx-${tx.hash}`;
         addNode(txId, 'transaction', { 
           value: tx.value, 
           hash: tx.hash,
@@ -528,7 +528,7 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick }
           data.block.transactions.slice(0, maxTransactionsToShow).forEach((tx: any, index: number) => {
             if (!tx || !tx.hash) return;
             
-            const txId = `tx-${index}-${tx.hash.substring(0, 8)}`;
+            const txId = `tx-${index}-${tx.hash}`;
             addNode(txId, 'transaction', { 
               value: tx.value,
               hash: tx.hash,
