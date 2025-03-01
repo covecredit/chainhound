@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import * as d3 from 'd3';
 import { format } from 'date-fns';
+import { safelyConvertBigIntToString } from '../utils/bigIntUtils';
 
 interface TransactionTimelineProps {
   data: any;
@@ -168,13 +169,16 @@ const TransactionTimeline: React.FC<TransactionTimelineProps> = ({ data }) => {
   
   // Process the data for timeline visualization
   const processDataForTimeline = (data: any) => {
+    // Make sure we're working with a safe copy of the data (no BigInt values)
+    const safeData = safelyConvertBigIntToString(data);
+    
     const timelineData: { date: Date; count: number }[] = [];
     
-    if (data.type === 'address' && data.transactions && data.transactions.length > 0) {
+    if (safeData.type === 'address' && safeData.transactions && safeData.transactions.length > 0) {
       // Group transactions by day
       const txByDay = new Map<string, number>();
       
-      data.transactions.forEach((tx: any) => {
+      safeData.transactions.forEach((tx: any) => {
         if (tx.timestamp) {
           try {
             const timestamp = typeof tx.timestamp === 'string' ? parseInt(tx.timestamp, 10) : Number(tx.timestamp);
@@ -200,29 +204,29 @@ const TransactionTimeline: React.FC<TransactionTimelineProps> = ({ data }) => {
       
       // Sort by date
       timelineData.sort((a, b) => a.date.getTime() - b.date.getTime());
-    } else if (data.type === 'block') {
+    } else if (safeData.type === 'block') {
       // For blocks, we'll just show a single point
-      if (data.block && data.block.timestamp) {
+      if (safeData.block && safeData.block.timestamp) {
         try {
-          const timestamp = typeof data.block.timestamp === 'string' ? 
-            parseInt(data.block.timestamp, 10) : Number(data.block.timestamp);
+          const timestamp = typeof safeData.block.timestamp === 'string' ? 
+            parseInt(safeData.block.timestamp, 10) : Number(safeData.block.timestamp);
           
           if (!isNaN(timestamp)) {
             timelineData.push({
               date: new Date(timestamp * 1000),
-              count: data.block.transactions ? data.block.transactions.length : 0
+              count: safeData.block.transactions ? safeData.block.transactions.length : 0
             });
           }
         } catch (error) {
           console.error('Error processing block timestamp:', error);
         }
       }
-    } else if (data.type === 'transaction') {
+    } else if (safeData.type === 'transaction') {
       // For a single transaction, we'll just show a single point
-      if (data.transaction && data.transaction.timestamp) {
+      if (safeData.transaction && safeData.transaction.timestamp) {
         try {
-          const timestamp = typeof data.transaction.timestamp === 'string' ? 
-            parseInt(data.transaction.timestamp, 10) : Number(data.transaction.timestamp);
+          const timestamp = typeof safeData.transaction.timestamp === 'string' ? 
+            parseInt(safeData.transaction.timestamp, 10) : Number(safeData.transaction.timestamp);
           
           if (!isNaN(timestamp)) {
             timelineData.push({

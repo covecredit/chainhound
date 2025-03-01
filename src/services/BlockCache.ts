@@ -14,9 +14,6 @@ class BlockCache {
   private readonly STORE_NAME = 'blocks';
   private readonly VERSION = 1;
   private isInitialized = false;
-  private failedBlocks = new Set<number>();
-  private maxRetries = 3;
-  private retryMap = new Map<number, number>();
 
   constructor() {
     this.dbPromise = this.initDB();
@@ -52,14 +49,11 @@ class BlockCache {
     }
     
     try {
-      const db = await this.dbPromise;
-      await db.put(this.STORE_NAME, block);
+      // Convert any BigInt values to strings before storing
+      const safeBlock = this.convertBigIntToString(block);
       
-      // Remove from failed blocks if it was previously marked as failed
-      if (this.failedBlocks.has(block.number)) {
-        this.failedBlocks.delete(block.number);
-        this.retryMap.delete(block.number);
-      }
+      const db = await this.dbPromise;
+      await db.put(this.STORE_NAME, safeBlock);
     } catch (error) {
       console.error('Failed to cache block:', error);
     }
@@ -79,12 +73,9 @@ class BlockCache {
       
       await Promise.all([
         ...blocks.map(block => {
-          // Remove from failed blocks if it was previously marked as failed
-          if (this.failedBlocks.has(block.number)) {
-            this.failedBlocks.delete(block.number);
-            this.retryMap.delete(block.number);
-          }
-          return tx.store.put(block);
+          // Convert any BigInt values to strings before storing
+          const safeBlock = this.convertBigIntToString(block);
+          return tx.store.put(safeBlock);
         }),
         tx.done
       ]);
@@ -101,33 +92,12 @@ class BlockCache {
       await this.dbPromise;
     }
     
-    // Skip if this block is known to be problematic
-    if (this.failedBlocks.has(blockNumber)) {
-      return undefined;
-    }
-    
     try {
       const db = await this.dbPromise;
       return await db.get(this.STORE_NAME, blockNumber);
     } catch (error) {
       console.error('Failed to get block from cache:', error);
-      
-      // Mark this block as failed
-      this.markBlockAsFailed(blockNumber);
-      
       return undefined;
-    }
-  }
-
-  /**
-   * Mark a block as failed to avoid repeated failures
-   */
-  private markBlockAsFailed(blockNumber: number): void {
-    const currentRetries = this.retryMap.get(blockNumber) || 0;
-    if (currentRetries >= this.maxRetries) {
-      this.failedBlocks.add(blockNumber);
-    } else {
-      this.retryMap.set(blockNumber, currentRetries + 1);
     }
   }
 
@@ -179,9 +149,7 @@ class BlockCache {
       const db = await this.dbPromise;
       const range = IDBKeyRange.bound(startBlock, endBlock);
       const keys = await db.getAllKeys(this.STORE_NAME, range);
-      
-      // Filter out blocks that are marked as failed
-      return (keys as number[]).filter(blockNum => !this.failedBlocks.has(blockNum));
+      return keys as number[];
     } catch (error) {
       console.error('Failed to get cached block numbers:', error);
       return [];
@@ -288,10 +256,6 @@ class BlockCache {
     try {
       const db = await this.dbPromise;
       await db.clear(this.STORE_NAME);
-      
-      // Also clear the failed blocks set
-      this.failedBlocks.clear();
-      this.retryMap.clear();
     } catch (error) {
       console.error('Failed to clear cache:', error);
     }
@@ -314,13 +278,6 @@ class BlockCache {
       let cursor = await index.openCursor(range);
       while (cursor) {
         await cursor.delete();
-        
-        // Also remove from failed blocks if present
-        if (this.failedBlocks.has(cursor.primaryKey as number)) {
-          this.failedBlocks.delete(cursor.primaryKey as number);
-          this.retryMap.delete(cursor.primaryKey as number);
-        }
-        
         cursor = await cursor.continue();
       }
       
@@ -341,6 +298,35 @@ class BlockCache {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  }
+
+  /**
+   * Convert BigInt values in an object to strings
+   */
+  private convertBigIntToString(obj: any): any {
+    if (obj === null || obj === undefined) {
+      return obj;
+    }
+    
+    if (typeof obj === 'bigint') {
+      return obj.toString();
+    }
+    
+    if (typeof obj === 'object') {
+      if (Array.isArray(obj)) {
+        return obj.map(item => this.convertBigIntToString(item));
+      }
+      
+      const result: Record<string, any> = {};
+      for (const key in obj) {
+        if (Object.prototype.hasOwnProperty.call(obj, key)) {
+          result[key] = this.convertBigIntToString(obj[key]);
+        }
+      }
+      return result;
+    }
+    
+    return obj;
   }
 }
 

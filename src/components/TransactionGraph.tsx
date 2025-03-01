@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
 import { Cog, Wallet, Box, ArrowRight, Tag, Star, AlertTriangle, Info } from 'lucide-react';
 import { format } from 'date-fns';
+import { safelyConvertBigIntToString } from '../utils/bigIntUtils';
 
 interface Node {
   id: string;
@@ -178,7 +179,7 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data }) => {
         .scaleExtent([0.1, 4])
         .on('zoom', (event) => {
           container.attr('transform', event.transform);
-        })
+        }) as any
     );
     
     // Create links
@@ -215,7 +216,7 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data }) => {
         d3.drag()
           .on('start', dragstarted)
           .on('drag', dragged)
-          .on('end', dragended)
+          .on('end', dragended) as any
       )
       .on('contextmenu', function(event, d) {
         handleContextMenu(event, d);
@@ -501,6 +502,9 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data }) => {
   
   // Process the data into a format suitable for D3 graph visualization
   const processDataToGraph = (data: any): GraphData => {
+    // Make sure we're working with a safe copy of the data (no BigInt values)
+    const safeData = safelyConvertBigIntToString(data);
+    
     const nodes: Node[] = [];
     const links: Link[] = [];
     const nodeIds = new Set<string>();
@@ -518,26 +522,26 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data }) => {
       }
     };
     
-    if (data.type === 'address') {
+    if (safeData.type === 'address') {
       // Add the main address node
-      addNode(data.address, data.isContract ? 'contract' : 'address');
+      addNode(safeData.address, safeData.isContract ? 'contract' : 'address');
       
       // Add transaction nodes and links
-      if (data.transactions && Array.isArray(data.transactions)) {
-        data.transactions.forEach((tx: any, index: number) => {
+      if (safeData.transactions && Array.isArray(safeData.transactions)) {
+        safeData.transactions.forEach((tx: any, index: number) => {
           if (!tx || !tx.hash) return; // Skip invalid transactions
           
           const txId = `tx-${index}-${tx.hash.substring(0, 8)}`;
           addNode(txId, 'transaction', tx.hash);
           
-          if (tx.from && tx.from.toLowerCase() === data.address.toLowerCase()) {
+          if (tx.from && tx.from.toLowerCase() === safeData.address.toLowerCase()) {
             // This address is sending
             if (tx.to) {
               // Check if the destination is a contract
               const isContractCall = tx._isContractCall === true;
               addNode(tx.to, isContractCall ? 'contract' : 'address');
               links.push({ 
-                source: data.address, 
+                source: safeData.address, 
                 target: txId, 
                 value: tx.value || '0', 
                 type: 'send',
@@ -557,7 +561,7 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data }) => {
               const contractAddr = tx.contractAddress || 'contract-creation';
               addNode(contractAddr, 'contract');
               links.push({ 
-                source: data.address, 
+                source: safeData.address, 
                 target: txId, 
                 value: tx.value || '0', 
                 type: 'send',
@@ -573,7 +577,7 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data }) => {
                 blockNumber: tx.blockNumber
               });
             }
-          } else if (tx.to && tx.to.toLowerCase() === data.address.toLowerCase()) {
+          } else if (tx.to && tx.to.toLowerCase() === safeData.address.toLowerCase()) {
             // This address is receiving
             if (tx.from) {
               addNode(tx.from, 'address');
@@ -587,7 +591,7 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data }) => {
               });
               links.push({ 
                 source: txId, 
-                target: data.address, 
+                target: safeData.address, 
                 value: tx.value || '0', 
                 type: 'receive',
                 timestamp: tx.timestamp,
@@ -597,8 +601,8 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data }) => {
           }
         });
       }
-    } else if (data.type === 'transaction') {
-      const tx = data.transaction;
+    } else if (safeData.type === 'transaction') {
+      const tx = safeData.transaction;
       if (!tx) return { nodes: [], links: [] };
       
       // Add transaction node
@@ -620,7 +624,7 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data }) => {
       
       if (tx.to) {
         // Check if it's a contract
-        const isContract = data.receipt?.contractAddress || false;
+        const isContract = safeData.receipt?.contractAddress || false;
         addNode(tx.to, isContract ? 'contract' : 'address');
         links.push({ 
           source: txId, 
@@ -630,12 +634,12 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data }) => {
           timestamp: tx.timestamp,
           blockNumber: tx.blockNumber
         });
-      } else if (data.receipt?.contractAddress) {
+      } else if (safeData.receipt?.contractAddress) {
         // Contract creation
-        addNode(data.receipt.contractAddress, 'contract');
+        addNode(safeData.receipt.contractAddress, 'contract');
         links.push({ 
           source: txId, 
-          target: data.receipt.contractAddress, 
+          target: safeData.receipt.contractAddress, 
           value: tx.value || '0', 
           type: 'send',
           timestamp: tx.timestamp,
@@ -644,8 +648,8 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data }) => {
       }
       
       // If there are internal transactions in the receipt, add those too
-      if (data.receipt && data.receipt.logs && Array.isArray(data.receipt.logs)) {
-        data.receipt.logs.forEach((log: any, index: number) => {
+      if (safeData.receipt && safeData.receipt.logs && Array.isArray(safeData.receipt.logs)) {
+        safeData.receipt.logs.forEach((log: any, index: number) => {
           if (!log || !log.address) return;
           
           const logId = `log-${index}-${log.transactionHash ? log.transactionHash.substring(0, 8) : index}`;
@@ -670,18 +674,18 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data }) => {
           });
         });
       }
-    } else if (data.type === 'block') {
-      if (!data.block) return { nodes: [], links: [] };
+    } else if (safeData.type === 'block') {
+      if (!safeData.block) return { nodes: [], links: [] };
       
       // Add block node
-      const blockId = `block-${data.block.number || 'unknown'}`;
+      const blockId = `block-${safeData.block.number || 'unknown'}`;
       addNode(blockId, 'transaction');
       
       // Add transaction nodes and links
-      if (data.block.transactions && Array.isArray(data.block.transactions)) {
-        const maxTransactionsToShow = Math.min(data.block.transactions.length, 20);
+      if (safeData.block.transactions && Array.isArray(safeData.block.transactions)) {
+        const maxTransactionsToShow = Math.min(safeData.block.transactions.length, 20);
         
-        data.block.transactions.slice(0, maxTransactionsToShow).forEach((tx: any, index: number) => {
+        safeData.block.transactions.slice(0, maxTransactionsToShow).forEach((tx: any, index: number) => {
           if (!tx || !tx.hash) return;
           
           const txId = `tx-${index}-${tx.hash.substring(0, 8)}`;
@@ -692,8 +696,8 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data }) => {
             target: txId, 
             value: '0', 
             type: 'interact',
-            timestamp: data.block.timestamp,
-            blockNumber: data.block.number
+            timestamp: safeData.block.timestamp,
+            blockNumber: safeData.block.number
           });
           
           if (tx.from) {
@@ -703,8 +707,8 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data }) => {
               target: txId, 
               value: tx.value || '0', 
               type: 'send',
-              timestamp: data.block.timestamp,
-              blockNumber: data.block.number
+              timestamp: safeData.block.timestamp,
+              blockNumber: safeData.block.number
             });
           }
           
@@ -715,8 +719,8 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data }) => {
               target: tx.to, 
               value: tx.value || '0', 
               type: 'send',
-              timestamp: data.block.timestamp,
-              blockNumber: data.block.number
+              timestamp: safeData.block.timestamp,
+              blockNumber: safeData.block.number
             });
           } else {
             // Contract creation
@@ -727,8 +731,8 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data }) => {
               target: contractAddr, 
               value: tx.value || '0', 
               type: 'send',
-              timestamp: data.block.timestamp,
-              blockNumber: data.block.number
+              timestamp: safeData.block.timestamp,
+              blockNumber: safeData.block.number
             });
           }
         });

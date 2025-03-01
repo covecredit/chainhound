@@ -10,7 +10,7 @@ export const ETHEREUM_PROVIDERS = ethereumProviders;
 export const DEFAULT_SETTINGS = {
   provider: 'https://eth.llamarpc.com',
   autoReconnect: true,
-  debugMode: false,
+  debugMode: true, // Set debug mode to true by default
   secureConnectionsOnly: true,
   refreshInterval: 30,
   autoRefresh: true
@@ -70,7 +70,7 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [networkInfo, setNetworkInfo] = useState<NetworkInfo | null>(null);
   const [debugMode, setDebugMode] = useState<boolean>(
-    localStorage.getItem('chainhound_debug_mode') === 'true'
+    localStorage.getItem('chainhound_debug_mode') === 'true' || DEFAULT_SETTINGS.debugMode
   );
   const [autoReconnect, setAutoReconnectState] = useState<boolean>(
     localStorage.getItem('chainhound_auto_reconnect') !== 'false'

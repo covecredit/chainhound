@@ -38,7 +38,7 @@ export function safelyConvertBigIntToString(obj: any): any {
  * @param value String value that might represent a BigInt
  * @returns Number or the original string if conversion is not possible
  */
-export function safelyConvertStringToBigInt(value: string): number | string | bigint {
+export function safelyConvertStringToNumber(value: string): number | string {
   if (!value || typeof value !== 'string') {
     return value;
   }
@@ -51,8 +51,8 @@ export function safelyConvertStringToBigInt(value: string): number | string | bi
       if (!isNaN(num) && num <= Number.MAX_SAFE_INTEGER) {
         return num;
       }
-      // Otherwise keep as BigInt
-      return BigInt(value);
+      // Otherwise keep as string
+      return value;
     } catch (e) {
       // If conversion fails, return the original string
       return value;
@@ -63,25 +63,15 @@ export function safelyConvertStringToBigInt(value: string): number | string | bi
 }
 
 /**
- * Formats a BigInt or large number value to a human-readable string with units
- * @param value The value to format (BigInt, string, or number)
+ * Formats a large number value to a human-readable string with units
+ * @param value The value to format (string or number)
  * @param decimals Number of decimal places to show
  * @returns Formatted string
  */
-export function formatBigValue(value: bigint | string | number, decimals: number = 2): string {
+export function formatLargeNumber(value: string | number, decimals: number = 2): string {
   let numValue: number;
   
-  if (typeof value === 'bigint') {
-    // Convert BigInt to string first
-    const strValue = value.toString();
-    // Then try to convert to number if it's not too large
-    try {
-      numValue = Number(strValue);
-    } catch (e) {
-      // If it's too large, just return the string with commas
-      return strValue.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-    }
-  } else if (typeof value === 'string') {
+  if (typeof value === 'string') {
     numValue = Number(value);
     if (isNaN(numValue)) {
       return value;
@@ -101,5 +91,30 @@ export function formatBigValue(value: bigint | string | number, decimals: number
     return (numValue / 1e3).toFixed(decimals) + 'K';
   } else {
     return numValue.toFixed(decimals);
+  }
+}
+
+/**
+ * Formats a wei value to ETH with appropriate precision
+ * @param weiValue The wei value as a string
+ * @returns Formatted ETH value
+ */
+export function formatWeiToEth(weiValue: string): string {
+  try {
+    // Convert wei to ETH (1 ETH = 10^18 wei)
+    const wei = BigInt(weiValue);
+    const eth = Number(wei) / 1e18;
+    
+    // Format with appropriate precision
+    if (eth < 0.001) {
+      return eth.toFixed(6);
+    } else if (eth < 1) {
+      return eth.toFixed(4);
+    } else {
+      return eth.toFixed(2);
+    }
+  } catch (e) {
+    console.error('Error formatting wei to ETH:', e);
+    return '0';
   }
 }
