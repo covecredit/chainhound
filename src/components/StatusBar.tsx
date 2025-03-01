@@ -127,78 +127,11 @@ const StatusBar = () => {
             </div>
             
             {!isConnected && autoReconnect && (
-              <div className="flex items-center whitespace-nowrap status-bar-item text-amber-600 dark:text-amber-400">
-                <AlertTriangle className="h-3 w-3 mr-1 flex-shrink-0" />
+              <div className="flex items-center whitespace-nowrap status-bar-item">
+                <AlertTriangle className="h-3 w-3 mr-1 flex-shrink-0 text-yellow-500" />
                 <span>Auto-reconnecting...</span>
               </div>
             )}
-            
-            {networkInfo && (
-              <>
-                <div className="flex items-center whitespace-nowrap status-bar-item">
-                  <Database className="h-3 w-3 mr-1 flex-shrink-0" />
-                  <span>Block: {networkInfo.blockHeight?.toLocaleString() || 'Unknown'}</span>
-                </div>
-                
-                <div className="flex items-center whitespace-nowrap status-bar-item">
-                  <RefreshCw className="h-3 w-3 mr-1 flex-shrink-0" />
-                  <span>Updated: {getTimeSinceUpdate()}</span>
-                </div>
-                
-                {networkInfo.gasPrice && (
-                  <div className="flex items-center whitespace-nowrap status-bar-item">
-                    <Zap className="h-3 w-3 mr-1 flex-shrink-0" />
-                    <span>Gas: {parseFloat(networkInfo.gasPrice).toFixed(1)} Gwei</span>
-                  </div>
-                )}
-                
-                <div className="flex items-center whitespace-nowrap status-bar-item">
-                  <span>Network: {networkInfo.name || `Chain ID: ${networkInfo.chainId || 'Unknown'}`}</span>
-                </div>
-                
-                {networkInfo.version && (
-                  <div className="flex items-center whitespace-nowrap status-bar-item">
-                    <span>Version: {networkInfo.version}</span>
-                  </div>
-                )}
-                
-                {debugMode && networkInfo.syncStatus && typeof networkInfo.syncStatus === 'object' && (
-                  <div className="flex items-center whitespace-nowrap status-bar-item">
-                    <span>Sync: {networkInfo.syncStatus.currentBlock}/{networkInfo.syncStatus.highestBlock}</span>
-                  </div>
-                )}
-              </>
-            )}
-            
-            {/* Block Cache Stats */}
-            <div className="flex items-center whitespace-nowrap status-bar-item border-l border-gray-300 dark:border-gray-600 pl-2 ml-1">
-              <HardDrive className="h-3 w-3 mr-1 flex-shrink-0" />
-              <span>Cache: {cacheStats.totalBlocks} blocks</span>
-              {cacheStats.totalBlocks > 0 && (
-                <>
-                  <span className="mx-1">|</span>
-                  <span>{cacheStats.sizeEstimate}</span>
-                  {cacheStats.oldestBlock && cacheStats.newestBlock && (
-                    <>
-                      <span className="mx-1">|</span>
-                      <span>{cacheStats.oldestBlock}-{cacheStats.newestBlock}</span>
-                    </>
-                  )}
-                  <button 
-                    onClick={handleClearCache}
-                    className="ml-1 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
-                    title="Clear cache"
-                  >
-                    <RefreshCw className="h-2.5 w-2.5" />
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-          
-          <div className="flex items-center whitespace-nowrap mt-1 sm:mt-0">
-            <Clock className="h-3 w-3 mr-1 flex-shrink-0" />
-            <span>{currentTime.toLocaleTimeString()}</span>
           </div>
         </div>
       </div>

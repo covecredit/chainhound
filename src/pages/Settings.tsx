@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Settings as SettingsIcon, Save, RefreshCw, Server, Plus, Trash2, Bug, Shield, AlertTriangle, Database, Upload, Download, RotateCcw } from 'lucide-react';
 import { useWeb3Context } from '../contexts/Web3Context';
 import { blockCache } from '../services/BlockCache';
+import ProviderStatus from '../components/ProviderStatus';
 
 const Settings = () => {
   const { provider, setProvider, isConnected, availableProviders, debugMode, setDebugMode, autoReconnect, setAutoReconnect, resetSettings, exportCache, importCache } = useWeb3Context();
@@ -271,6 +272,12 @@ const Settings = () => {
         <div className="space-y-6">
           <div>
             <h2 className="text-lg font-semibold mb-4">Blockchain Connections</h2>
+            
+            <div className="mb-4 p-4 bg-gray-50 rounded-lg border dark:bg-gray-700 dark:border-gray-600">
+              <h3 className="text-sm font-medium mb-2">Connection Status</h3>
+              <ProviderStatus />
+            </div>
+            
             <div className="space-y-4">
               <div className="flex items-center mb-2">
                 <input 
@@ -397,20 +404,6 @@ const Settings = () => {
                   For enhanced transaction data and history
                 </p>
               </div>
-              
-              <div className="flex items-center">
-                <input 
-                  type="checkbox"
-                  id="autoReconnect"
-                  checked={localAutoReconnect}
-                  onChange={(e) => setLocalAutoReconnect(e.target.checked)}
-                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600"
-                />
-                <label htmlFor="autoReconnect" className="ml-2 flex items-center text-sm text-gray-700 dark:text-gray-300">
-                  <RefreshCw className="h-4 w-4 mr-1 text-indigo-600" />
-                  Automatically reconnect when connection is lost
-                </label>
-              </div>
             </div>
           </div>
           
@@ -473,6 +466,20 @@ const Settings = () => {
                   <span className="ml-2 text-xs bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded dark:bg-indigo-900 dark:text-indigo-200">
                     Logs detailed information to console
                   </span>
+                </label>
+              </div>
+              
+              <div className="flex items-center">
+                <input 
+                  type="checkbox"
+                  id="autoReconnect"
+                  checked={localAutoReconnect}
+                  onChange={(e) => setLocalAutoReconnect(e.target.checked)}
+                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600"
+                />
+                <label htmlFor="autoReconnect" className="ml-2 flex items-center text-sm text-gray-700 dark:text-gray-300">
+                  <RefreshCw className="h-4 w-4 mr-1 text-indigo-600" />
+                  Automatically reconnect when connection is lost
                 </label>
               </div>
             </div>

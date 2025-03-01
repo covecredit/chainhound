@@ -74,7 +74,7 @@ export function formatLargeNumber(value: string | number, decimals: number = 2):
   if (typeof value === 'string') {
     numValue = Number(value);
     if (isNaN(numValue)) {
-      return value;
+      return value.toString();
     }
   } else {
     numValue = value;
@@ -96,22 +96,65 @@ export function formatLargeNumber(value: string | number, decimals: number = 2):
 
 /**
  * Formats a wei value to ETH with appropriate precision
- * @param weiValue The wei value as a string
+ * @param weiValue The wei value as a string or BigInt
  * @returns Formatted ETH value
  */
-export function formatWeiToEth(weiValue: string): string {
+export function formatWeiToEth(weiValue: string | bigint | number): string {
   try {
+    if (weiValue === undefined || weiValue === null) {
+      return '0';
+    }
+    
+    // Handle different input types
+    let weiString: string;
+    
+    if (typeof weiValue === 'bigint') {
+      weiString = weiValue.toString();
+    } else if (typeof weiValue === 'string') {
+      // Remove '0x' prefix if present
+      weiString = weiValue.startsWith('0x') ? BigInt(weiValue).toString() : weiValue;
+    } else if (typeof weiValue === 'number') {
+      weiString = weiValue.toString();
+    } else {
+      return '0';
+    }
+    
+    // Handle zero value
+    if (weiString === '0') {
+      return '0';
+    }
+    
     // Convert wei to ETH (1 ETH = 10^18 wei)
-    const wei = BigInt(weiValue);
-    const eth = Number(wei) / 1e18;
+    // Use string operations to avoid precision issues with large numbers
+    let ethValue: number;
+    
+    if (weiString.length <= 18) {
+      // Less than 1 ETH
+      const paddedWei = weiString.padStart(18, '0');
+      const decimalPart = paddedWei.slice(0, paddedWei.length - 18) || '0';
+      const fractionalPart = paddedWei.slice(paddedWei.length - 18);
+      ethValue = Number(`${decimalPart}.${fractionalPart}`);
+    } else {
+      // More than 1 ETH - handle with string operations to avoid precision loss
+      const integerPart = weiString.slice(0, weiString.length - 18);
+      const fractionalPart = weiString.slice(weiString.length - 18).padStart(18, '0');
+      
+      // Take only the first few digits of the fractional part to avoid precision issues
+      const significantFractionalPart = fractionalPart.substring(0, 6);
+      ethValue = Number(`${integerPart}.${significantFractionalPart}`);
+    }
     
     // Format with appropriate precision
-    if (eth < 0.001) {
-      return eth.toFixed(6);
-    } else if (eth < 1) {
-      return eth.toFixed(4);
+    if (ethValue < 0.000001) {
+      return '<0.000001';
+    } else if (ethValue < 0.001) {
+      return ethValue.toFixed(6);
+    } else if (ethValue < 1) {
+      return ethValue.toFixed(4);
+    } else if (ethValue < 1000) {
+      return ethValue.toFixed(2);
     } else {
-      return eth.toFixed(2);
+      return ethValue.toLocaleString(undefined, { maximumFractionDigits: 2 });
     }
   } catch (e) {
     console.error('Error formatting wei to ETH:', e);

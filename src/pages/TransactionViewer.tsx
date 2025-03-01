@@ -2,13 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Search, Download, Camera, Info, AlertTriangle, Loader, Clock, X, Settings, ChevronDown, ChevronUp, Trash2, Infinity } from 'lucide-react';
 import * as d3 from 'd3';
 import { toPng } from 'html-to-image';
-import { saveAs } from 'file-saver';
 import TransactionGraph from '../components/TransactionGraph';
-import TransactionTimeline from '../components/TransactionTimeline';
 import TransactionLegend from '../components/TransactionLegend';
 import { useWeb3Context } from '../contexts/Web3Context';
+import { formatWeiToEth, safelyConvertBigIntToString } from '../utils/bigIntUtils';
 import { blockCache } from '../services/BlockCache';
-import { safelyConvertBigIntToString, formatWeiToEth } from '../utils/bigIntUtils';
 
 interface RecentSearch {
   query: string;
@@ -20,7 +18,6 @@ interface SearchOptions {
   maxBlocks: number;
   maxTransactions: number;
   includeInternalTxs: boolean;
-  useCachedBlocks: boolean;
 }
 
 const TransactionViewer = () => {
@@ -35,16 +32,15 @@ const TransactionViewer = () => {
   const [searchOptions, setSearchOptions] = useState<SearchOptions>({
     maxBlocks: 1000,
     maxTransactions: 50,
-    includeInternalTxs: true,
-    useCachedBlocks: true
+    includeInternalTxs: true
   });
   const graphRef = useRef<HTMLDivElement>(null);
   const searchHistoryRef = useRef<HTMLDivElement>(null);
   const advancedOptionsRef = useRef<HTMLDivElement>(null);
   
-  // Constants for search limits
-  const MAX_BLOCKS = 100000; // Cap at 100,000 blocks
-  const UNLIMITED_TRANSACTIONS = 1000; // Unlimited transactions threshold
+  // Constants for unlimited search
+  const UNLIMITED_BLOCKS = 10000;
+  const UNLIMITED_TRANSACTIONS = 200;
   
   // Load recent searches and search options from localStorage on component mount
   useEffect(() => {
@@ -109,6 +105,7 @@ const TransactionViewer = () => {
     
     setIsLoading(true);
     setError('');
+    setTransactionData(null);
     
     try {
       // Add to recent searches
@@ -128,156 +125,163 @@ const TransactionViewer = () => {
           console.log(`[ChainHound Debug] Input is an Ethereum address`);
         }
         
-        const balance = await web3.eth.getBalance(searchQuery);
-        const txCount = await web3.eth.getTransactionCount(searchQuery);
-        const code = await web3.eth.getCode(searchQuery);
-        const isContract = code !== '0x';
-        
-        if (debugMode) {
-          console.log(`[ChainHound Debug] Address balance: ${web3.utils.fromWei(balance.toString(), 'ether')} ETH`);
-          console.log(`[ChainHound Debug] Transaction count: ${txCount}`);
-          console.log(`[ChainHound Debug] Is contract: ${isContract}`);
-        }
-        
-        // Get recent transactions
-        const blockNumber = await web3.eth.getBlockNumber();
-        
-        if (debugMode) {
-          console.log(`[ChainHound Debug] Current block number: ${blockNumber}`);
-          console.log(`[ChainHound Debug] Fetching recent blocks for transactions...`);
-          console.log(`[ChainHound Debug] Max blocks to scan: ${searchOptions.maxBlocks}`);
-        }
-        
-        // Determine if we're doing an unlimited transactions search
-        const isUnlimitedTransactions = searchOptions.maxTransactions >= UNLIMITED_TRANSACTIONS;
-        
-        // Get blocks to scan - ensure we don't exceed MAX_BLOCKS
-        // Convert blockNumber to a regular number to avoid BigInt issues
-        const currentBlockNumber = Number(blockNumber);
-        const blocksToScan = Math.min(searchOptions.maxBlocks, MAX_BLOCKS, currentBlockNumber);
-        const startBlock = Math.max(1, currentBlockNumber - blocksToScan);
-        
-        if (debugMode) {
-          console.log(`[ChainHound Debug] Scanning from block ${startBlock} to ${currentBlockNumber}`);
-          if (isUnlimitedTransactions) console.log(`[ChainHound Debug] Unlimited transaction collection enabled`);
-        }
-        
-        // Get blocks in batches to avoid timeout
-        const batchSize = 10;
-        const transactions = [];
-        let transactionsFound = 0;
-        let searchLimitReached = false;
-        
-        // Check which blocks are already cached if using cache
-        let cachedBlockNumbers: number[] = [];
-        if (searchOptions.useCachedBlocks) {
-          cachedBlockNumbers = await blockCache.getCachedBlockNumbers(startBlock, currentBlockNumber);
-          if (debugMode) {
-            console.log(`[ChainHound Debug] Found ${cachedBlockNumbers.length} cached blocks`);
-          }
-        }
-        
-        for (let i = currentBlockNumber; i >= startBlock; i -= batchSize) {
-          // Check if we've reached the transaction limit (unless unlimited)
-          if (!isUnlimitedTransactions && transactionsFound >= searchOptions.maxTransactions) {
-            searchLimitReached = true;
-            break;
-          }
-          
-          const endBlock = i;
-          const startBatchBlock = Math.max(startBlock, i - batchSize + 1);
+        try {
+          const balance = await web3.eth.getBalance(searchQuery);
+          const txCount = await web3.eth.getTransactionCount(searchQuery);
+          const code = await web3.eth.getCode(searchQuery);
+          const isContract = code !== '0x';
           
           if (debugMode) {
-            console.log(`[ChainHound Debug] Fetching batch from block ${startBatchBlock} to ${endBlock}`);
+            console.log(`[ChainHound Debug] Address balance: ${web3.utils.fromWei(balance.toString(), 'ether')} ETH`);
+            console.log(`[ChainHound Debug] Transaction count: ${txCount}`);
+            console.log(`[ChainHound Debug] Is contract: ${isContract}`);
           }
           
-          // Get blocks in parallel
-          const blockPromises = [];
-          for (let j = endBlock; j >= startBatchBlock; j--) {
-            // Check if the block is cached first
-            if (searchOptions.useCachedBlocks && cachedBlockNumbers.includes(j)) {
-              blockPromises.push(blockCache.getBlock(j));
-            } else {
-              blockPromises.push(
-                web3.eth.getBlock(j, true)
+          // Get recent transactions
+          const blockNumber = await web3.eth.getBlockNumber();
+          
+          if (debugMode) {
+            console.log(`[ChainHound Debug] Current block number: ${blockNumber}`);
+            console.log(`[ChainHound Debug] Fetching recent blocks for transactions...`);
+            console.log(`[ChainHound Debug] Max blocks to scan: ${searchOptions.maxBlocks}`);
+          }
+          
+          // Determine if we're doing an unlimited search
+          const isUnlimitedBlocks = searchOptions.maxBlocks >= UNLIMITED_BLOCKS;
+          const isUnlimitedTransactions = searchOptions.maxTransactions >= UNLIMITED_TRANSACTIONS;
+          
+          // Get blocks to scan
+          const blocksToScan = isUnlimitedBlocks ? 5000 : Math.min(searchOptions.maxBlocks, 5000);
+          const startBlock = Math.max(1, blockNumber - blocksToScan);
+          
+          if (debugMode) {
+            console.log(`[ChainHound Debug] Scanning from block ${startBlock} to ${blockNumber}`);
+            if (isUnlimitedBlocks) console.log(`[ChainHound Debug] Unlimited block scanning enabled`);
+            if (isUnlimitedTransactions) console.log(`[ChainHound Debug] Unlimited transaction collection enabled`);
+          }
+          
+          // Get blocks in batches to avoid timeout
+          const batchSize = 10;
+          const transactions = [];
+          let transactionsFound = 0;
+          let searchLimitReached = false;
+          
+          for (let i = blockNumber; i >= startBlock; i -= batchSize) {
+            // Check if we've reached the transaction limit (unless unlimited)
+            if (!isUnlimitedTransactions && transactionsFound >= searchOptions.maxTransactions) {
+              searchLimitReached = true;
+              break;
+            }
+            
+            const endBlock = i;
+            const startBatchBlock = Math.max(startBlock, i - batchSize + 1);
+            
+            if (debugMode) {
+              console.log(`[ChainHound Debug] Fetching batch from block ${startBatchBlock} to ${endBlock}`);
+            }
+            
+            try {
+              // Check if blocks are in cache first
+              const cachedBlockNumbers = await blockCache.getCachedBlockNumbers(startBatchBlock, endBlock);
+              const blocksToFetch = [];
+              
+              for (let j = endBlock; j >= startBatchBlock; j--) {
+                if (!cachedBlockNumbers.includes(j)) {
+                  blocksToFetch.push(j);
+                }
+              }
+              
+              // Get blocks from cache
+              const cachedBlocks = await blockCache.getBlocksInRange(startBatchBlock, endBlock);
+              
+              // Get blocks from network in parallel
+              const blockPromises = blocksToFetch.map(blockNum => 
+                web3.eth.getBlock(blockNum, true)
                   .then(block => {
-                    // Cache the block if it's valid
-                    if (block && searchOptions.useCachedBlocks) {
+                    if (block) {
+                      // Cache the block for future use
                       blockCache.cacheBlock(block);
                     }
                     return block;
                   })
                   .catch(err => {
                     if (debugMode) {
-                      console.log(`[ChainHound Debug] Error fetching block ${j}:`, err);
+                      console.log(`[ChainHound Debug] Error fetching block ${blockNum}:`, err);
                     }
                     return null;
                   })
               );
-            }
-          }
-          
-          const blocks = await Promise.all(blockPromises);
-          
-          // Process blocks
-          for (const block of blocks) {
-            if (!block || !block.transactions) continue;
-            
-            // Filter transactions related to the searched address
-            const relatedTxs = block.transactions.filter((tx: any) => 
-              (tx.from && tx.from.toLowerCase() === searchQuery.toLowerCase()) || 
-              (tx.to && tx.to.toLowerCase() === searchQuery.toLowerCase())
-            );
-            
-            if (relatedTxs.length > 0) {
-              // Add timestamp to transactions
-              const txsWithTimestamp = relatedTxs.map(tx => ({
-                ...tx,
-                timestamp: block.timestamp,
-                blockNumber: block.number
-              }));
               
-              transactions.push(...txsWithTimestamp);
-              transactionsFound += relatedTxs.length;
+              const fetchedBlocks = await Promise.all(blockPromises);
               
-              // Check if we've reached the transaction limit (unless unlimited)
-              if (!isUnlimitedTransactions && transactionsFound >= searchOptions.maxTransactions) {
-                searchLimitReached = true;
-                if (debugMode) {
-                  console.log(`[ChainHound Debug] Reached max transactions limit (${searchOptions.maxTransactions})`);
+              // Combine cached and fetched blocks
+              const blocks = [...cachedBlocks, ...fetchedBlocks.filter(Boolean)];
+              
+              // Process blocks
+              for (const block of blocks) {
+                if (!block || !block.transactions) continue;
+                
+                // Filter transactions related to the searched address
+                const relatedTxs = block.transactions.filter((tx: any) => 
+                  (tx.from && tx.from.toLowerCase() === searchQuery.toLowerCase()) || 
+                  (tx.to && tx.to.toLowerCase() === searchQuery.toLowerCase())
+                );
+                
+                if (relatedTxs.length > 0) {
+                  // Add timestamp to transactions
+                  const txsWithTimestamp = relatedTxs.map(tx => ({
+                    ...tx,
+                    timestamp: block.timestamp
+                  }));
+                  
+                  transactions.push(...txsWithTimestamp);
+                  transactionsFound += relatedTxs.length;
+                  
+                  // Check if we've reached the transaction limit (unless unlimited)
+                  if (!isUnlimitedTransactions && transactionsFound >= searchOptions.maxTransactions) {
+                    searchLimitReached = true;
+                    if (debugMode) {
+                      console.log(`[ChainHound Debug] Reached max transactions limit (${searchOptions.maxTransactions})`);
+                    }
+                    break;
+                  }
                 }
-                break;
+              }
+            } catch (error) {
+              console.error('Error processing block batch:', error);
+              if (debugMode) {
+                console.log(`[ChainHound Debug] Error processing block batch:`, error);
               }
             }
+            
+            if (searchLimitReached) break;
           }
           
-          if (searchLimitReached) break;
-        }
-        
-        if (debugMode) {
-          console.log(`[ChainHound Debug] Found ${transactions.length} related transactions`);
-        }
-        
-        // Convert BigInt values to strings to avoid serialization issues
-        const safeTransactions = safelyConvertBigIntToString(transactions);
-        
-        // Determine how many transactions to display
-        const displayTransactions = isUnlimitedTransactions 
-          ? safeTransactions 
-          : safeTransactions.slice(0, searchOptions.maxTransactions);
-        
-        data = {
-          type: 'address',
-          address: searchQuery,
-          balance: web3.utils.fromWei(balance.toString(), 'ether'),
-          transactionCount: txCount,
-          isContract,
-          transactions: displayTransactions,
-          searchLimitReached
-        };
-        
-        if (debugMode) {
-          console.log(`[ChainHound Debug] Address data prepared:`, data);
+          if (debugMode) {
+            console.log(`[ChainHound Debug] Found ${transactions.length} related transactions`);
+          }
+          
+          // Determine how many transactions to display
+          const displayTransactions = isUnlimitedTransactions 
+            ? transactions 
+            : transactions.slice(0, searchOptions.maxTransactions);
+          
+          data = {
+            type: 'address',
+            address: searchQuery,
+            balance: web3.utils.fromWei(balance.toString(), 'ether'),
+            transactionCount: txCount,
+            isContract,
+            transactions: displayTransactions,
+            searchLimitReached
+          };
+          
+          if (debugMode) {
+            console.log(`[ChainHound Debug] Address data prepared:`, data);
+          }
+        } catch (error) {
+          console.error('Error fetching address data:', error);
+          throw new Error(`Failed to fetch address data: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
       } else if (searchQuery.startsWith('0x') && searchQuery.length === 66) {
         // It's a transaction hash
@@ -285,46 +289,40 @@ const TransactionViewer = () => {
           console.log(`[ChainHound Debug] Input is a transaction hash`);
         }
         
-        const tx = await web3.eth.getTransaction(searchQuery);
-        
-        if (!tx) {
-          throw new Error('Transaction not found');
-        }
-        
-        if (debugMode) {
-          console.log(`[ChainHound Debug] Transaction found:`, tx);
-        }
-        
-        const receipt = await web3.eth.getTransactionReceipt(searchQuery);
-        const block = await web3.eth.getBlock(tx.blockNumber);
-        
-        if (debugMode) {
-          console.log(`[ChainHound Debug] Transaction receipt:`, receipt);
-          console.log(`[ChainHound Debug] Block info:`, block);
-        }
-        
-        // Convert BigInt values to strings
-        const safeTx = safelyConvertBigIntToString(tx);
-        const safeReceipt = safelyConvertBigIntToString(receipt);
-        const safeBlock = safelyConvertBigIntToString(block);
-        
-        // Cache the block if using cache
-        if (searchOptions.useCachedBlocks && block) {
-          blockCache.cacheBlock(block);
-        }
-        
-        data = {
-          type: 'transaction',
-          transaction: {
-            ...safeTx,
-            timestamp: safeBlock.timestamp,
-            blockNumber: safeBlock.number
-          },
-          receipt: safeReceipt,
-        };
-        
-        if (debugMode) {
-          console.log(`[ChainHound Debug] Transaction data prepared:`, data);
+        try {
+          const tx = await web3.eth.getTransaction(searchQuery);
+          
+          if (!tx) {
+            throw new Error('Transaction not found');
+          }
+          
+          if (debugMode) {
+            console.log(`[ChainHound Debug] Transaction found:`, tx);
+          }
+          
+          const receipt = await web3.eth.getTransactionReceipt(searchQuery);
+          const block = await web3.eth.getBlock(tx.blockNumber);
+          
+          if (debugMode) {
+            console.log(`[ChainHound Debug] Transaction receipt:`, receipt);
+            console.log(`[ChainHound Debug] Block info:`, block);
+          }
+          
+          data = {
+            type: 'transaction',
+            transaction: {
+              ...tx,
+              timestamp: block ? block.timestamp : null
+            },
+            receipt: receipt,
+          };
+          
+          if (debugMode) {
+            console.log(`[ChainHound Debug] Transaction data prepared:`, data);
+          }
+        } catch (error) {
+          console.error('Error fetching transaction data:', error);
+          throw new Error(`Failed to fetch transaction data: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
       } else if (!isNaN(Number(searchQuery))) {
         // It's a block number
@@ -332,47 +330,46 @@ const TransactionViewer = () => {
           console.log(`[ChainHound Debug] Input is a block number`);
         }
         
-        // Check if the block is cached first
-        let block = null;
-        const blockNumber = Number(searchQuery);
-        
-        if (searchOptions.useCachedBlocks) {
-          block = await blockCache.getBlock(blockNumber);
-        }
-        
-        if (!block) {
-          block = await web3.eth.getBlock(blockNumber, true);
+        try {
+          // Check if block is in cache first
+          let block = await blockCache.getBlock(Number(searchQuery));
           
-          // Cache the block if it's valid and using cache
-          if (block && searchOptions.useCachedBlocks) {
-            blockCache.cacheBlock(block);
+          if (!block) {
+            block = await web3.eth.getBlock(Number(searchQuery), true);
+            
+            if (block) {
+              // Cache the block for future use
+              blockCache.cacheBlock(block);
+            }
           }
-        }
-        
-        if (!block) {
-          throw new Error('Block not found');
-        }
-        
-        if (debugMode) {
-          console.log(`[ChainHound Debug] Block found:`, block);
-        }
-        
-        // Convert BigInt values to strings
-        const safeBlock = safelyConvertBigIntToString(block);
-        
-        data = {
-          type: 'block',
-          block: safeBlock,
-        };
-        
-        if (debugMode) {
-          console.log(`[ChainHound Debug] Block data prepared:`, data);
+          
+          if (!block) {
+            throw new Error('Block not found');
+          }
+          
+          if (debugMode) {
+            console.log(`[ChainHound Debug] Block found:`, block);
+          }
+          
+          data = {
+            type: 'block',
+            block: block,
+          };
+          
+          if (debugMode) {
+            console.log(`[ChainHound Debug] Block data prepared:`, data);
+          }
+        } catch (error) {
+          console.error('Error fetching block data:', error);
+          throw new Error(`Failed to fetch block data: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
       } else {
         throw new Error('Invalid input. Please enter a valid Ethereum address, transaction hash, or block number.');
       }
       
-      setTransactionData(data);
+      // Convert any BigInt values to strings to avoid serialization issues
+      const safeData = safelyConvertBigIntToString(data);
+      setTransactionData(safeData);
     } catch (err: any) {
       console.error('Error fetching blockchain data:', err);
       setError(err.message || 'Failed to fetch blockchain data');
@@ -501,10 +498,16 @@ const TransactionViewer = () => {
     }
     
     const blob = new Blob([content], { type: mimeType });
-    saveAs(blob, filename);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
   };
   
   const formatTimestamp = (timestamp: number) => {
+    if (!timestamp) return 'Unknown';
     const date = new Date(timestamp);
     return date.toLocaleString();
   };
@@ -635,8 +638,8 @@ const TransactionViewer = () => {
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center">
                         <span>Max blocks to scan: </span>
                         <span className="ml-1 flex items-center">
-                          {displayMaxValue(searchOptions.maxBlocks, MAX_BLOCKS)}
-                          {searchOptions.maxBlocks >= MAX_BLOCKS && (
+                          {displayMaxValue(searchOptions.maxBlocks, UNLIMITED_BLOCKS)}
+                          {searchOptions.maxBlocks >= UNLIMITED_BLOCKS && (
                             <Infinity className="h-4 w-4 ml-1 text-indigo-600 dark:text-indigo-400" />
                           )}
                         </span>
@@ -644,16 +647,16 @@ const TransactionViewer = () => {
                       <input 
                         type="range" 
                         min="100" 
-                        max={MAX_BLOCKS}
+                        max="5000"
                         step="100"
-                        value={searchOptions.maxBlocks}
+                        value={Math.min(searchOptions.maxBlocks, 5000)}
                         onChange={(e) => updateSearchOptions({ maxBlocks: parseInt(e.target.value) })}
                         className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
                       />
                       <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
                         <span>100</span>
-                        <span>50000</span>
-                        <span>100000</span>
+                        <span>2500</span>
+                        <span>5000</span>
                       </div>
                     </div>
                     
@@ -678,8 +681,8 @@ const TransactionViewer = () => {
                       />
                       <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
                         <span>10</span>
-                        <span>500</span>
-                        <span>Unlimited</span>
+                        <span>100</span>
+                        <span>200</span>
                       </div>
                     </div>
                     
@@ -691,27 +694,8 @@ const TransactionViewer = () => {
                         onChange={(e) => updateSearchOptions({ includeInternalTxs: e.target.checked })}
                         className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600"
                       />
-                      <label 
-                        htmlFor="includeInternalTxs" 
-                        className="ml-2 block text-sm text-gray-700 dark:text-gray-300"
-                      >
+                      <label htmlFor="includeInternalTxs" className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
                         Include internal transactions
-                      </label>
-                    </div>
-                    
-                    <div className="flex items-center">
-                      <input 
-                        type="checkbox"
-                        id="useCachedBlocks"
-                        checked={searchOptions.useCachedBlocks}
-                        onChange={(e) => updateSearchOptions({ useCachedBlocks: e.target.checked })}
-                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600"
-                      />
-                      <label 
-                        htmlFor="useCachedBlocks" 
-                        className="ml-2 block text-sm text-gray-700 dark:text-gray-300"
-                      >
-                        Use cached blocks (faster)
                       </label>
                     </div>
                   </div>
@@ -721,26 +705,34 @@ const TransactionViewer = () => {
             
             <button 
               onClick={() => handleSearch()}
-              disabled={isLoading || !searchInput}
-              className={`px-4 py-2 rounded-md text-white flex items-center justify-center space-x-2 ${
-                isLoading || !searchInput 
-                  ? 'bg-gray-400 cursor-not-allowed' 
-                  : 'bg-indigo-600 hover:bg-indigo-700'
-              }`}
+              disabled={isLoading || !isConnected}
+              className={`text-white py-2 px-4 rounded transition flex items-center justify-center ${isConnected ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-gray-400 cursor-not-allowed'}`}
             >
               {isLoading ? (
-                <Loader className="h-5 w-5 animate-spin" />
+                <div className="flex items-center">
+                  <Loader className="h-5 w-5 mr-2 animate-spin" />
+                  <span>Searching...</span>
+                </div>
               ) : (
-                <Search className="h-5 w-5" />
+                <>
+                  <Search className="h-5 w-5 mr-1" />
+                  <span>Search</span>
+                </>
               )}
-              <span>Search</span>
             </button>
           </div>
           
           {error && (
-            <div className="flex items-center space-x-2 text-red-600 dark:text-red-400">
-              <AlertTriangle className="h-5 w-5" />
-              <span>{error}</span>
+            <div className="mt-4 p-3 bg-red-100 text-red-700 rounded flex items-start dark:bg-red-900 dark:text-red-200">
+              <AlertTriangle className="h-5 w-5 mr-2 flex-shrink-0 mt-0.5" />
+              <p>{error}</p>
+            </div>
+          )}
+          
+          {!isConnected && (
+            <div className="mt-4 p-3 bg-yellow-100 text-yellow-700 rounded flex items-start dark:bg-yellow-900 dark:text-yellow-200">
+              <AlertTriangle className="h-5 w-5 mr-2 flex-shrink-0 mt-0.5" />
+              <p>Not connected to Ethereum network. Please check your connection in Settings.</p>
             </div>
           )}
         </div>
@@ -761,7 +753,7 @@ const TransactionViewer = () => {
                 </button>
                 <button 
                   onClick={() => exportData('json')}
-                  className="bg-gray-100 hover:bg-gray-200 text-gray-700 py-1  px-3 rounded flex items-center text-sm dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                  className="bg-gray-100 hover:bg-gray-200 text-gray-700 py-1 px-3 rounded flex items-center text-sm dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
                 >
                   <Download className="h-4 w-4 mr-1" />
                   <span>Export JSON</span>
@@ -773,8 +765,8 @@ const TransactionViewer = () => {
               <div className="mb-4 p-2 bg-yellow-50 text-yellow-700 rounded-md text-sm flex items-center dark:bg-yellow-900/30 dark:text-yellow-200">
                 <AlertTriangle className="h-4 w-4 mr-2" />
                 <span>
-                  Showing {transactionData.transactions.length} transactions (limit reached). 
-                  Use advanced options to increase the limit or set to unlimited for a complete search.
+                  Showing {transactionData.transactions?.length || 0} transactions (limit reached). 
+                  Use advanced options to increase the limit for a more complete search.
                 </span>
               </div>
             )}
@@ -800,7 +792,7 @@ const TransactionViewer = () => {
                       <p><span className="font-medium">Balance:</span> {transactionData.balance} ETH</p>
                       <p><span className="font-medium">Transaction Count:</span> {transactionData.transactionCount}</p>
                       <p><span className="font-medium">Type:</span> {transactionData.isContract ? 'Contract' : 'EOA'}</p>
-                      <p><span className="font-medium">Transactions Shown:</span> {transactionData.transactions.length}</p>
+                      <p><span className="font-medium">Transactions Shown:</span> {transactionData.transactions?.length || 0}</p>
                     </div>
                   )}
                   
@@ -819,19 +811,12 @@ const TransactionViewer = () => {
                     <div className="space-y-2 text-sm">
                       <p><span className="font-medium">Block Number:</span> {transactionData.block.number}</p>
                       <p><span className="font-medium">Hash:</span> {transactionData.block.hash}</p>
-                      <p><span className="font-medium">Timestamp:</span> {new Date(Number(transactionData.block.timestamp) * 1000).toLocaleString()}</p>
-                      <p><span className="font-medium">Transactions:</span> {transactionData.block.transactions.length}</p>
+                      <p><span className="font-medium">Timestamp:</span> {formatTimestamp(transactionData.block.timestamp * 1000)}</p>
+                      <p><span className="font-medium">Transactions:</span> {transactionData.block.transactions?.length || 0}</p>
                     </div>
                   )}
                 </div>
               </div>
-            </div>
-          </div>
-          
-          <div className="bg-white p-6 rounded-lg shadow-md dark:bg-gray-800 dark:text-white">
-            <h2 className="text-xl font-semibold mb-4">Activity Timeline</h2>
-            <div className="h-[200px] border rounded-lg p-4 bg-gray-50 dark:bg-gray-900 dark:border-gray-700">
-              <TransactionTimeline data={transactionData} />
             </div>
           </div>
         </>

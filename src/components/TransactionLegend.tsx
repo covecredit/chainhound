@@ -1,10 +1,9 @@
 import React from 'react';
-import { Wallet, Cog, Box, ArrowRight } from 'lucide-react';
+import { Wallet, Cog, Box, ArrowRight, Cuboid as Cube } from 'lucide-react';
 
 const TransactionLegend = () => {
   return (
     <div className="space-y-3 text-sm dark:text-gray-200">
-      <h4 className="font-medium text-gray-700 dark:text-gray-300">Node Types</h4>
       <div className="flex items-center">
         <div className="w-4 h-4 rounded-full bg-indigo-600 mr-2"></div>
         <Wallet className="h-4 w-4 mr-1" />
@@ -20,8 +19,21 @@ const TransactionLegend = () => {
         <Box className="h-4 w-4 mr-1" />
         <span>Transaction</span>
       </div>
+      <div className="flex items-center">
+        <div className="w-4 h-4 rounded-full bg-emerald-500 mr-2"></div>
+        <Cube className="h-4 w-4 mr-1" />
+        <span>Block</span>
+      </div>
       
-      <h4 className="font-medium text-gray-700 dark:text-gray-300 mt-4">Connection Types</h4>
+      <div className="flex items-center">
+        <div className="w-4 h-4 rounded-full bg-red-500 mr-2"></div>
+        <span>From Address</span>
+      </div>
+      <div className="flex items-center">
+        <div className="w-4 h-4 rounded-full bg-emerald-500 mr-2"></div>
+        <span>To Address</span>
+      </div>
+      
       <div className="flex items-center">
         <div className="w-8 h-1 bg-red-500 mr-2"></div>
         <ArrowRight className="h-4 w-4 mr-1" />
