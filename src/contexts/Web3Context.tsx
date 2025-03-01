@@ -11,7 +11,7 @@ export const ETHEREUM_PROVIDERS = ethereumProviders;
 
 // Default settings
 export const DEFAULT_SETTINGS = {
-  provider: 'https://rpc.ankr.com/eth',
+  provider: 'https://eth.drpc.org', // Use HTTPS by default for better compatibility
   autoReconnect: true,
   debugMode: true, // Set debug mode to true by default
   secureConnectionsOnly: true,
@@ -51,18 +51,18 @@ const Web3Context = createContext<Web3ContextType | undefined>(undefined);
 
 // Filter providers to prefer secure connections
 const getDefaultProvider = (): string => {
-  // First try to get Ankr provider
-  const ankrProvider = ETHEREUM_PROVIDERS.find(p => 
-    p.url.includes('ankr.com')
-  );
-  
-  // Then try to get a secure HTTP provider
-  const secureHttpProvider = ETHEREUM_PROVIDERS.find(p => 
+  // First try to get an HTTPS provider
+  const httpsProvider = ETHEREUM_PROVIDERS.find(p => 
     p.url.startsWith('https://') && !p.url.includes('localhost')
   );
   
+  // Then try to get a WSS provider
+  const wssProvider = ETHEREUM_PROVIDERS.find(p => 
+    p.url.startsWith('wss://')
+  );
+  
   // Fall back to any provider if no secure ones are available
-  return ankrProvider?.url || secureHttpProvider?.url || DEFAULT_SETTINGS.provider;
+  return httpsProvider?.url || wssProvider?.url || DEFAULT_SETTINGS.provider;
 };
 
 export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -85,6 +85,7 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const currentProviderRef = useRef<string>(provider);
   const web3InstanceRef = useRef<Web3 | null>(null);
   const providerFailuresRef = useRef<Map<string, number>>(new Map());
+  const wsFailedRef = useRef<boolean>(false);
 
   const logDebug = (message: string, ...args: any[]) => {
     if (debugMode) {
@@ -205,11 +206,11 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
     reconnectTimerRef.current = setTimeout(() => {
       logDebug(`Attempting to reconnect (attempt ${reconnectAttempts + 1}/${maxReconnectAttempts})...`);
       
-      // If we've had multiple failures with the current provider, try a fallback
+      // If we've had multiple failures with the current provider, try a different one
       const currentFailures = providerFailuresRef.current.get(currentProviderRef.current) || 0;
-      if (currentFailures >= 2) {
-        logDebug(`Provider ${currentProviderRef.current} has failed ${currentFailures} times, trying fallback...`);
-        tryFallbackProvider().finally(() => {
+      if (currentFailures >= 2 || wsFailedRef.current) {
+        logDebug(`Provider ${currentProviderRef.current} has failed ${currentFailures} times, trying another provider...`);
+        tryAlternativeProvider().finally(() => {
           setIsReconnecting(false);
         });
       } else {
@@ -220,41 +221,57 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }, delay);
   };
 
-  // Try a series of fallback providers
-  const tryFallbackProvider = async (): Promise<boolean> => {
-    const fallbacks = getFallbackProviders();
+  // Try a different provider from the list
+  const tryAlternativeProvider = async (): Promise<boolean> => {
+    // Get all providers from the list
+    const availableProviders = ETHEREUM_PROVIDERS.map(p => p.url);
     
-    for (const fallbackUrl of fallbacks) {
-      // Skip if we've already tried this provider and it failed
-      if (providerFailuresRef.current.get(fallbackUrl) && providerFailuresRef.current.get(fallbackUrl)! > 0) {
-        logDebug(`Skipping fallback provider ${fallbackUrl} as it has failed before`);
-        continue;
-      }
-      
-      logDebug(`Trying fallback provider: ${fallbackUrl}`);
+    // Filter out the current provider and any that have failed
+    const filteredProviders = availableProviders.filter(url => {
+      if (url === currentProviderRef.current) return false;
+      const failures = providerFailuresRef.current.get(url) || 0;
+      return failures < 2; // Only try providers that have failed less than twice
+    }); 
+    // If WebSockets have failed, prioritize HTTPS providers
+    let orderedProviders: string[];
+    if (wsFailedRef.current) {
+      // Only use HTTPS providers if WebSockets have failed
+      const httpsProviders = filteredProviders.filter(url => url.startsWith('https://'));
+      orderedProviders = httpsProviders;
+      logDebug('WebSockets failed, using only HTTPS providers');
+    } else {
+      // Prioritize HTTPS providers, then try WSS
+      const httpsProviders = filteredProviders.filter(url => url.startsWith('https://'));
+      const wssProviders = filteredProviders.filter(url => url.startsWith('wss://'));
+      orderedProviders = [...httpsProviders, ...wssProviders];
+    }
+    
+    if (orderedProviders.length === 0) {
+      logDebug('No alternative providers available');
+      return false;
+    }
+    
+    // Try each provider in order
+    for (const providerUrl of orderedProviders) {
+      logDebug(`Trying alternative provider: ${providerUrl}`);
       try {
-        await setProvider(fallbackUrl);
+        await setProvider(providerUrl);
         return true;
       } catch (error) {
-        logDebug(`Fallback provider ${fallbackUrl} failed:`, error);
+        logDebug(`Alternative provider ${providerUrl} failed:`, error);
         // Mark this provider as failed
-        providerFailuresRef.current.set(fallbackUrl, 1);
+        providerFailuresRef.current.set(providerUrl, (providerFailuresRef.current.get(providerUrl) || 0) + 1);
+        
+        // If it's a WebSocket provider that failed, mark WebSockets as failed
+        if (providerUrl.startsWith('wss://')) {
+          wsFailedRef.current = true;
+          logDebug('Marking WebSockets as failed');
+        }
       }
     }
     
-    logDebug('All fallback providers failed');
+    logDebug('All alternative providers failed');
     return false;
-  };
-
-  // Get a list of fallback providers
-  const getFallbackProviders = (): string[] => {
-    return [
-      'https://rpc.ankr.com/eth',
-      'https://cloudflare-eth.com',
-      'https://eth.llamarpc.com',
-      'https://ethereum.publicnode.com',
-      'https://1rpc.io/eth'
-    ];
   };
 
   // Clean up all active connections and timeouts
@@ -310,6 +327,11 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
       
       // Check if it's a WebSocket provider
       if (secureUrl.startsWith('ws://') || secureUrl.startsWith('wss://')) {
+        // If WebSockets have failed before, don't try again
+        if (wsFailedRef.current) {
+          throw new Error('WebSocket connections have failed, using HTTPS instead');
+        }
+        
         logDebug('Creating WebSocket provider...');
         
         // Create a WebSocket provider with custom options
@@ -330,6 +352,7 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
         
         wsProvider.on('error', (err: any) => {
           logDebug('WebSocket error:', err);
+          wsFailedRef.current = true; // Mark WebSockets as failed
         });
         
         wsProvider.on('end', () => {
@@ -360,6 +383,37 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // Configure Web3 instance
       newWeb3.eth.handleRevert = true;
       
+      // Set up no-cors mode for fetch requests to avoid CORS issues
+      const originalSend = newWeb3.currentProvider.send.bind(newWeb3.currentProvider);
+      (newWeb3.currentProvider as any).send = function(payload: any, callback: any) {
+        // If this is an HTTP provider, modify the fetch options
+        if (this.host && this.host.startsWith('http')) {
+          const originalFetch = window.fetch;
+          const patchedFetch = (url: RequestInfo | URL, options?: RequestInit) => {
+            // Add mode: 'no-cors' to the options
+            const newOptions = {
+              ...options,
+              mode: 'no-cors' as RequestMode
+            };
+            return originalFetch(url, newOptions);
+          };
+          
+          // Temporarily replace fetch
+          window.fetch = patchedFetch;
+          
+          // Call the original send method
+          const result = originalSend(payload, callback);
+          
+          // Restore original fetch
+          window.fetch = originalFetch;
+          
+          return result;
+        } else {
+          // For WebSocket providers, just use the original method
+          return originalSend(payload, callback);
+        }
+      };
+      
       // Test connection
       logDebug('Testing connection...');
       const blockNumber = await newWeb3.eth.getBlockNumber();
@@ -380,6 +434,13 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } catch (error) {
       console.error('Failed to connect to provider:', error);
       logDebug('Connection failed:', error);
+      
+      // If it's a WebSocket provider that failed, mark WebSockets as failed
+      if (url.startsWith('wss://')) {
+        wsFailedRef.current = true;
+        logDebug('Marking WebSockets as failed');
+      }
+      
       setIsConnected(false);
       setNetworkInfo(null);
       throw error; // Re-throw to handle in the UI
@@ -442,6 +503,7 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
     
     // Reset provider failures tracking
     providerFailuresRef.current.clear();
+    wsFailedRef.current = false;
     
     // Reconnect with default provider
     await setProvider(getDefaultProvider());
@@ -543,14 +605,14 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({ children }) =>
         logDebug('Initializing Web3...');
         await setProvider(provider);
       } catch (error) {
-        console.error("Failed to initialize with saved provider, trying fallback", error);
-        logDebug('Failed to initialize with saved provider, trying fallback:', error);
-        // Try with a fallback provider
+        console.error("Failed to initialize with saved provider, trying alternative", error);
+        logDebug('Failed to initialize with saved provider, trying alternative:', error);
+        // Try with an alternative provider
         try {
-          await tryFallbackProvider();
+          await tryAlternativeProvider();
         } catch (fallbackError) {
-          console.error("Failed to initialize with fallback provider", fallbackError);
-          logDebug('Failed to initialize with fallback provider:', fallbackError);
+          console.error("Failed to initialize with alternative provider", fallbackError);
+          logDebug('Failed to initialize with alternative provider:', fallbackError);
         }
       }
     };

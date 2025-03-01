@@ -11,7 +11,10 @@ const StatusBar = () => {
     totalBlocks: 0,
     oldestBlock: undefined as number | undefined,
     newestBlock: undefined as number | undefined,
-    sizeEstimate: '0 B'
+    sizeEstimate: '0 B',
+    oldestTimestamp: undefined as Date | undefined,
+    newestTimestamp: undefined as Date | undefined,
+    errorBlocks: 0
   });
   
   useEffect(() => {
@@ -126,10 +129,59 @@ const StatusBar = () => {
               </span>
             </div>
             
+            {networkInfo && (
+              <>
+                <div className="flex items-center whitespace-nowrap status-bar-item">
+                  <Zap className="h-3 w-3 mr-1 flex-shrink-0" />
+                  <span>Block: {networkInfo.blockHeight?.toLocaleString()}</span>
+                </div>
+                
+                <div className="flex items-center whitespace-nowrap status-bar-item">
+                  <Clock className="h-3 w-3 mr-1 flex-shrink-0" />
+                  <span>Updated: {getTimeSinceUpdate()}</span>
+                </div>
+                
+                {networkInfo.chainId && (
+                  <div className="flex items-center whitespace-nowrap status-bar-item">
+                    <span>Chain ID: {networkInfo.chainId}</span>
+                  </div>
+                )}
+                
+                {networkInfo.gasPrice && (
+                  <div className="flex items-center whitespace-nowrap status-bar-item">
+                    <span>Gas: {networkInfo.gasPrice} Gwei</span>
+                  </div>
+                )}
+              </>
+            )}
+            
             {!isConnected && autoReconnect && (
               <div className="flex items-center whitespace-nowrap status-bar-item">
                 <AlertTriangle className="h-3 w-3 mr-1 flex-shrink-0 text-yellow-500" />
                 <span>Auto-reconnecting...</span>
+              </div>
+            )}
+            
+            {/* Cache stats */}
+            <div className="flex items-center whitespace-nowrap status-bar-item">
+              <Database className="h-3 w-3 mr-1 flex-shrink-0" />
+              <span>Cache: {cacheStats.totalBlocks.toLocaleString()} blocks</span>
+              {cacheStats.oldestBlock !== undefined && cacheStats.newestBlock !== undefined && (
+                <span className="ml-1 text-gray-500 dark:text-gray-400">
+                  (#{cacheStats.oldestBlock.toLocaleString()} - #{cacheStats.newestBlock.toLocaleString()})
+                </span>
+              )}
+              {cacheStats.sizeEstimate && (
+                <span className="ml-1 text-gray-500 dark:text-gray-400">
+                  {cacheStats.sizeEstimate}
+                </span>
+              )}
+            </div>
+            
+            {cacheStats.errorBlocks > 0 && (
+              <div className="flex items-center whitespace-nowrap status-bar-item">
+                <AlertTriangle className="h-3 w-3 mr-1 flex-shrink-0 text-amber-500" />
+                <span className="text-amber-600 dark:text-amber-400">Error blocks: {cacheStats.errorBlocks}</span>
               </div>
             )}
           </div>

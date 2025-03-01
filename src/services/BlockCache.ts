@@ -12,7 +12,8 @@ class BlockCache {
   private dbPromise: Promise<IDBPDatabase>;
   private readonly DB_NAME = 'chainhound-block-cache';
   private readonly STORE_NAME = 'blocks';
-  private readonly VERSION = 1;
+  private readonly ERROR_STORE_NAME = 'error-blocks';
+  private readonly VERSION = 2;
   private isInitialized = false;
 
   constructor() {
@@ -22,14 +23,24 @@ class BlockCache {
   private async initDB(): Promise<IDBPDatabase> {
     try {
       const db = await openDB(this.DB_NAME, this.VERSION, {
-        upgrade(db) {
-          // Create a store of objects
-          const store = db.createObjectStore('blocks', {
-            // The 'number' property of the block will be the key
-            keyPath: 'number'
-          });
-          // Create an index on the timestamp
-          store.createIndex('timestamp', 'timestamp');
+        upgrade(db, oldVersion, newVersion) {
+          // Create blocks store if it doesn't exist
+          if (!db.objectStoreNames.contains('blocks')) {
+            const store = db.createObjectStore('blocks', {
+              keyPath: 'number'
+            });
+            // Create an index on the timestamp
+            store.createIndex('timestamp', 'timestamp');
+          }
+          
+          // Create error-blocks store if it doesn't exist (added in version 2)
+          if (!db.objectStoreNames.contains('error-blocks') && oldVersion < 2) {
+            const errorStore = db.createObjectStore('error-blocks', {
+              keyPath: 'blockNumber'
+            });
+            errorStore.createIndex('timestamp', 'timestamp');
+            errorStore.createIndex('errorType', 'errorType');
+          }
         }
       });
       this.isInitialized = true;
@@ -54,6 +65,13 @@ class BlockCache {
       
       const db = await this.dbPromise;
       await db.put(this.STORE_NAME, safeBlock);
+      
+      // If this block was previously in the error store, remove it
+      try {
+        await db.delete(this.ERROR_STORE_NAME, block.number);
+      } catch (e) {
+        // Ignore errors if the block wasn't in the error store
+      }
     } catch (error) {
       console.error('Failed to cache block:', error);
     }
@@ -79,8 +97,88 @@ class BlockCache {
         }),
         tx.done
       ]);
+      
+      // Remove these blocks from the error store if they exist
+      const errorTx = db.transaction(this.ERROR_STORE_NAME, 'readwrite');
+      await Promise.all([
+        ...blocks.map(block => errorTx.store.delete(block.number)),
+        errorTx.done
+      ]);
     } catch (error) {
       console.error('Failed to cache blocks:', error);
+    }
+  }
+
+  /**
+   * Record a block that failed to fetch
+   */
+  async recordErrorBlock(blockNumber: number, errorType: string, errorMessage: string): Promise<void> {
+    if (!this.isInitialized) {
+      await this.dbPromise;
+    }
+    
+    try {
+      const db = await this.dbPromise;
+      await db.put(this.ERROR_STORE_NAME, {
+        blockNumber,
+        errorType,
+        errorMessage,
+        timestamp: Date.now(),
+        retryCount: 0
+      });
+    } catch (error) {
+      console.error('Failed to record error block:', error);
+    }
+  }
+
+  /**
+   * Get all error blocks
+   */
+  async getErrorBlocks(): Promise<any[]> {
+    if (!this.isInitialized) {
+      await this.dbPromise;
+    }
+    
+    try {
+      const db = await this.dbPromise;
+      return await db.getAll(this.ERROR_STORE_NAME);
+    } catch (error) {
+      console.error('Failed to get error blocks:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get error blocks in a specific range
+   */
+  async getErrorBlocksInRange(startBlock: number, endBlock: number): Promise<any[]> {
+    if (!this.isInitialized) {
+      await this.dbPromise;
+    }
+    
+    try {
+      const db = await this.dbPromise;
+      const range = IDBKeyRange.bound(startBlock, endBlock);
+      return await db.getAll(this.ERROR_STORE_NAME, range);
+    } catch (error) {
+      console.error('Failed to get error blocks in range:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Clear all error blocks
+   */
+  async clearErrorBlocks(): Promise<void> {
+    if (!this.isInitialized) {
+      await this.dbPromise;
+    }
+    
+    try {
+      const db = await this.dbPromise;
+      await db.clear(this.ERROR_STORE_NAME);
+    } catch (error) {
+      console.error('Failed to clear error blocks:', error);
     }
   }
 
@@ -214,6 +312,9 @@ class BlockCache {
     oldestBlock?: number;
     newestBlock?: number;
     sizeEstimate: string;
+    oldestTimestamp?: Date;
+    newestTimestamp?: Date;
+    errorBlocks: number;
   }> {
     if (!this.isInitialized) {
       await this.dbPromise;
@@ -224,6 +325,25 @@ class BlockCache {
       const count = await db.count(this.STORE_NAME);
       const lowest = await this.getLowestBlockNumber();
       const highest = await this.getHighestBlockNumber();
+      const errorCount = await db.count(this.ERROR_STORE_NAME);
+      
+      // Get timestamps for oldest and newest blocks
+      let oldestTimestamp: Date | undefined;
+      let newestTimestamp: Date | undefined;
+      
+      if (lowest !== undefined) {
+        const oldestBlock = await this.getBlock(lowest);
+        if (oldestBlock && oldestBlock.timestamp) {
+          oldestTimestamp = new Date(oldestBlock.timestamp * 1000); // Convert from Unix timestamp
+        }
+      }
+      
+      if (highest !== undefined) {
+        const newestBlock = await this.getBlock(highest);
+        if (newestBlock && newestBlock.timestamp) {
+          newestTimestamp = new Date(newestBlock.timestamp * 1000); // Convert from Unix timestamp
+        }
+      }
       
       // Estimate size (very rough approximation)
       // Assuming average block size of 50KB
@@ -234,13 +354,17 @@ class BlockCache {
         totalBlocks: count,
         oldestBlock: lowest,
         newestBlock: highest,
-        sizeEstimate
+        sizeEstimate,
+        oldestTimestamp,
+        newestTimestamp,
+        errorBlocks: errorCount
       };
     } catch (error) {
       console.error('Failed to get cache stats:', error);
       return {
         totalBlocks: 0,
-        sizeEstimate: '0 B'
+        sizeEstimate: '0 B',
+        errorBlocks: 0
       };
     }
   }
@@ -256,6 +380,7 @@ class BlockCache {
     try {
       const db = await this.dbPromise;
       await db.clear(this.STORE_NAME);
+      await db.clear(this.ERROR_STORE_NAME);
     } catch (error) {
       console.error('Failed to clear cache:', error);
     }

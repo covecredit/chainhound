@@ -1,37 +1,162 @@
 [
   {
-    "name": "Ankr (HTTPS)",
+    "name": "eth.drpc.org (HTTPS)",
+    "url": "https://eth.drpc.org",
+    "network": "mainnet"
+  },
+  {
+    "name": "rpc.ankr.com/eth (HTTPS)",
     "url": "https://rpc.ankr.com/eth",
     "network": "mainnet"
   },
   {
-    "name": "Cloudflare (HTTPS)",
+    "name": "cloudflare-eth.com (HTTPS)",
     "url": "https://cloudflare-eth.com",
     "network": "mainnet"
   },
   {
-    "name": "LlamaRPC (HTTPS)",
+    "name": "eth.llamarpc.com (HTTPS)",
     "url": "https://eth.llamarpc.com",
     "network": "mainnet"
   },
   {
-    "name": "1RPC (HTTPS)",
-    "url": "https://1rpc.io/eth",
-    "network": "mainnet"
-  },
-  {
-    "name": "Blast API (HTTPS)",
-    "url": "https://eth-mainnet.public.blastapi.io",
-    "network": "mainnet"
-  },
-  {
-    "name": "PublicNode (HTTPS)",
+    "name": "ethereum-rpc.publicnode.com (HTTPS)",
     "url": "https://ethereum-rpc.publicnode.com",
     "network": "mainnet"
   },
   {
-    "name": "Drpc (HTTPS)",
-    "url": "https://eth.drpc.org",
+    "name": "1rpc.io/eth (HTTPS)",
+    "url": "https://1rpc.io/eth",
+    "network": "mainnet"
+  },
+  {
+    "name": "eth-mainnet.public.blastapi.io (HTTPS)",
+    "url": "https://eth-mainnet.public.blastapi.io",
+    "network": "mainnet"
+  },
+  {
+    "name": "ethereum.blockpi.network (HTTPS)",
+    "url": "https://ethereum.blockpi.network/v1/rpc/public",
+    "network": "mainnet"
+  },
+  {
+    "name": "rpc.flashbots.net (HTTPS)",
+    "url": "https://rpc.flashbots.net",
+    "network": "mainnet"
+  },
+  {
+    "name": "ethereum.rpc.subquery.network (HTTPS)",
+    "url": "https://ethereum.rpc.subquery.network/public",
+    "network": "mainnet"
+  },
+  {
+    "name": "virginia.rpc.blxrbdn.com (HTTPS)",
+    "url": "https://virginia.rpc.blxrbdn.com",
+    "network": "mainnet"
+  },
+  {
+    "name": "singapore.rpc.blxrbdn.com (HTTPS)",
+    "url": "https://singapore.rpc.blxrbdn.com",
+    "network": "mainnet"
+  },
+  {
+    "name": "eth1.lava.build (HTTPS)",
+    "url": "https://eth1.lava.build",
+    "network": "mainnet"
+  },
+  {
+    "name": "core.gashawk.io (HTTPS)",
+    "url": "https://core.gashawk.io/rpc",
+    "network": "mainnet"
+  },
+  {
+    "name": "eth.meowrpc.com (HTTPS)",
+    "url": "https://eth.meowrpc.com",
+    "network": "mainnet"
+  },
+  {
+    "name": "api.securerpc.com (HTTPS)",
+    "url": "https://api.securerpc.com/v1",
+    "network": "mainnet"
+  },
+  {
+    "name": "eth-mainnet.nodereal.io (HTTPS)",
+    "url": "https://eth-mainnet.nodereal.io/v1/1659dfb40aa24bbb8153a677b98064d7",
+    "network": "mainnet"
+  },
+  {
+    "name": "mainnet.gateway.tenderly.co (HTTPS)",
+    "url": "https://mainnet.gateway.tenderly.co",
+    "network": "mainnet"
+  },
+  {
+    "name": "eth.blockrazor.xyz (HTTPS)",
+    "url": "https://eth.blockrazor.xyz",
+    "network": "mainnet"
+  },
+  {
+    "name": "rpc.payload.de (HTTPS)",
+    "url": "https://rpc.payload.de",
+    "network": "mainnet"
+  },
+  {
+    "name": "rpc.mevblocker.io (HTTPS)",
+    "url": "https://rpc.mevblocker.io",
+    "network": "mainnet"
+  },
+  {
+    "name": "rpc.graffiti.farm (HTTPS)",
+    "url": "https://rpc.graffiti.farm",
+    "network": "mainnet"
+  },
+  {
+    "name": "eth-pokt.nodies.app (HTTPS)",
+    "url": "https://eth-pokt.nodies.app",
+    "network": "mainnet"
+  },
+  {
+    "name": "eth.rpc.blxrbdn.com (HTTPS)",
+    "url": "https://eth.rpc.blxrbdn.com",
+    "network": "mainnet"
+  },
+  {
+    "name": "uk.rpc.blxrbdn.com (HTTPS)",
+    "url": "https://uk.rpc.blxrbdn.com",
+    "network": "mainnet"
+  },
+  {
+    "name": "gateway.tenderly.co/public/mainnet (HTTPS)",
+    "url": "https://gateway.tenderly.co/public/mainnet",
+    "network": "mainnet"
+  },
+  {
+    "name": "eth.merkle.io (HTTPS)",
+    "url": "https://eth.merkle.io",
+    "network": "mainnet"
+  },
+  {
+    "name": "rpc.mevblocker.io/noreverts (HTTPS)",
+    "url": "https://rpc.mevblocker.io/noreverts",
+    "network": "mainnet"
+  },
+  {
+    "name": "eth.drpc.org (WSS)",
+    "url": "wss://eth.drpc.org",
+    "network": "mainnet"
+  },
+  {
+    "name": "mainnet.gateway.tenderly.co (WSS)",
+    "url": "wss://mainnet.gateway.tenderly.co",
+    "network": "mainnet"
+  },
+  {
+    "name": "ethereum-rpc.publicnode.com (WSS)",
+    "url": "wss://ethereum-rpc.publicnode.com",
+    "network": "mainnet"
+  },
+  {
+    "name": "ws-rpc.graffiti.farm (WSS)",
+    "url": "wss://ws-rpc.graffiti.farm",
     "network": "mainnet"
   },
   {

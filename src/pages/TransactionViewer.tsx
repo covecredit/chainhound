@@ -5,7 +5,7 @@ import { toPng } from 'html-to-image';
 import TransactionGraph from '../components/TransactionGraph';
 import TransactionLegend from '../components/TransactionLegend';
 import { useWeb3Context } from '../contexts/Web3Context';
-import { formatWeiToEth, safelyConvertBigIntToString } from '../utils/bigIntUtils';
+import { formatWeiToEth, safelyConvertBigIntToString, safelyConvertNumberToBigIntString } from '../utils/bigIntUtils';
 import { blockCache } from '../services/BlockCache';
 
 interface RecentSearch {
@@ -34,6 +34,7 @@ const TransactionViewer = () => {
     maxTransactions: 50,
     includeInternalTxs: true
   });
+  const [selectedNodeDetails, setSelectedNodeDetails] = useState<any>(null);
   const graphRef = useRef<HTMLDivElement>(null);
   const searchHistoryRef = useRef<HTMLDivElement>(null);
   const advancedOptionsRef = useRef<HTMLDivElement>(null);
@@ -106,6 +107,7 @@ const TransactionViewer = () => {
     setIsLoading(true);
     setError('');
     setTransactionData(null);
+    setSelectedNodeDetails(null);
     
     try {
       // Add to recent searches
@@ -150,12 +152,12 @@ const TransactionViewer = () => {
           const isUnlimitedBlocks = searchOptions.maxBlocks >= UNLIMITED_BLOCKS;
           const isUnlimitedTransactions = searchOptions.maxTransactions >= UNLIMITED_TRANSACTIONS;
           
-          // Get blocks to scan
+          // Calculate blocks to scan - using regular numbers, not BigInt
           const blocksToScan = isUnlimitedBlocks ? 5000 : Math.min(searchOptions.maxBlocks, 5000);
-          const startBlock = Math.max(1, blockNumber - blocksToScan);
+          const startBlockNum = Math.max(1, Number(blockNumber) - blocksToScan);
           
           if (debugMode) {
-            console.log(`[ChainHound Debug] Scanning from block ${startBlock} to ${blockNumber}`);
+            console.log(`[ChainHound Debug] Scanning from block ${startBlockNum} to ${blockNumber}`);
             if (isUnlimitedBlocks) console.log(`[ChainHound Debug] Unlimited block scanning enabled`);
             if (isUnlimitedTransactions) console.log(`[ChainHound Debug] Unlimited transaction collection enabled`);
           }
@@ -166,7 +168,7 @@ const TransactionViewer = () => {
           let transactionsFound = 0;
           let searchLimitReached = false;
           
-          for (let i = blockNumber; i >= startBlock; i -= batchSize) {
+          for (let i = Number(blockNumber); i >= startBlockNum; i -= batchSize) {
             // Check if we've reached the transaction limit (unless unlimited)
             if (!isUnlimitedTransactions && transactionsFound >= searchOptions.maxTransactions) {
               searchLimitReached = true;
@@ -174,7 +176,7 @@ const TransactionViewer = () => {
             }
             
             const endBlock = i;
-            const startBatchBlock = Math.max(startBlock, i - batchSize + 1);
+            const startBatchBlock = Math.max(startBlockNum, i - batchSize + 1);
             
             if (debugMode) {
               console.log(`[ChainHound Debug] Fetching batch from block ${startBatchBlock} to ${endBlock}`);
@@ -208,6 +210,8 @@ const TransactionViewer = () => {
                     if (debugMode) {
                       console.log(`[ChainHound Debug] Error fetching block ${blockNum}:`, err);
                     }
+                    // Record the error in the cache
+                    blockCache.recordErrorBlock(blockNum, 'fetch_error', err.message || 'Unknown error');
                     return null;
                   })
               );
@@ -508,7 +512,7 @@ const TransactionViewer = () => {
   
   const formatTimestamp = (timestamp: number) => {
     if (!timestamp) return 'Unknown';
-    const date = new Date(timestamp);
+    const date = new Date(timestamp * 1000);
     return date.toLocaleString();
   };
   
@@ -528,6 +532,108 @@ const TransactionViewer = () => {
   // Helper to display max blocks/transactions value
   const displayMaxValue = (value: number, maxValue: number) => {
     return value >= maxValue ? "Unlimited" : value.toString();
+  };
+  
+  // Handle node click in the graph
+  const handleNodeClick = (node: any) => {
+    setSelectedNodeDetails(node);
+  };
+  
+  // Render details for the selected node
+  const renderNodeDetails = () => {
+    if (!selectedNodeDetails) return null;
+    
+    switch (selectedNodeDetails.type) {
+      case 'address':
+      case 'contract':
+        return (
+          <div className="space-y-2 text-sm">
+            <p><span className="font-medium">Type:</span> {selectedNodeDetails.type === 'contract' ? 'Contract' : 'Address'}</p>
+            <p><span className="font-medium">Address:</span> {selectedNodeDetails.id}</p>
+            {selectedNodeDetails.role && (
+              <p><span className="font-medium">Role:</span> {selectedNodeDetails.role}</p>
+            )}
+            {selectedNodeDetails.data && (
+              <>
+                {selectedNodeDetails.data.balance && (
+                  <p><span className="font-medium">Balance:</span> {selectedNodeDetails.data.balance} ETH</p>
+                )}
+              </>
+            )}
+            <div className="mt-2">
+              <button 
+                onClick={() => {
+                  setSearchInput(selectedNodeDetails.id);
+                  handleSearch(selectedNodeDetails.id);
+                }}
+                className="text-xs bg-indigo-600 text-white px-2 py-1 rounded hover:bg-indigo-700"
+              >
+                Search this address
+              </button>
+            </div>
+          </div>
+        );
+        
+      case 'transaction':
+        return (
+          <div className="space-y-2 text-sm">
+            <p><span className="font-medium">Type:</span> Transaction</p>
+            <p><span className="font-medium">Hash:</span> {selectedNodeDetails.hash}</p>
+            {selectedNodeDetails.blockNumber && (
+              <p><span className="font-medium">Block:</span> {selectedNodeDetails.blockNumber}</p>
+            )}
+            {selectedNodeDetails.timestamp && (
+              <p><span className="font-medium">Time:</span> {formatTimestamp(selectedNodeDetails.timestamp)}</p>
+            )}
+            {selectedNodeDetails.value && (
+              <p><span className="font-medium">Value:</span> {formatWeiToEth(selectedNodeDetails.value)} ETH</p>
+            )}
+            <div className="mt-2">
+              <button 
+                onClick={() => {
+                  setSearchInput(selectedNodeDetails.hash);
+                  handleSearch(selectedNodeDetails.hash);
+                }}
+                className="text-xs bg-indigo-600 text-white px-2 py-1 rounded hover:bg-indigo-700"
+              >
+                View transaction details
+              </button>
+            </div>
+          </div>
+        );
+        
+      case 'block':
+        return (
+          <div className="space-y-2 text-sm">
+            <p><span className="font-medium">Type:</span> Block</p>
+            <p><span className="font-medium">Number:</span> {selectedNodeDetails.blockNumber}</p>
+            {selectedNodeDetails.hash && (
+              <p><span className="font-medium">Hash:</span> {selectedNodeDetails.hash}</p>
+            )}
+            {selectedNodeDetails.timestamp && (
+              <p><span className="font-medium">Time:</span> {formatTimestamp(selectedNodeDetails.timestamp)}</p>
+            )}
+            <div className="mt-2">
+              <button 
+                onClick={() => {
+                  setSearchInput(selectedNodeDetails.blockNumber.toString());
+                  handleSearch(selectedNodeDetails.blockNumber.toString());
+                }}
+                className="text-xs bg-indigo-600 text-white px-2 py-1 rounded hover:bg-indigo-700"
+              >
+                View block details
+              </button>
+            </div>
+          </div>
+        );
+        
+      default:
+        return (
+          <div className="text-sm">
+            <p>Unknown node type: {selectedNodeDetails.type}</p>
+          </div>
+        );
+    }
   };
   
   return (
@@ -614,7 +720,7 @@ const TransactionViewer = () => {
                               <span className="truncate">{search.query}</span>
                             </div>
                             <span className="text-xs text-gray-500 dark:text-gray-400 ml-2 whitespace-nowrap">
-                              {formatTimestamp(search.timestamp)}
+                              {formatTimestamp(search.timestamp / 1000)}
                             </span>
                           </div>
                         ))}
@@ -774,45 +880,28 @@ const TransactionViewer = () => {
             <div className="flex flex-col lg:flex-row gap-4">
               <div className="lg:w-3/4">
                 <div ref={graphRef} className="border rounded-lg p-4 bg-gray-50 h-[500px] dark:bg-gray-900 dark:border-gray-700">
-                  <TransactionGraph data={transactionData} />
+                  <TransactionGraph data={transactionData} onNodeClick={handleNodeClick} />
                 </div>
               </div>
-              <div className="lg:w-1/4">
-                <div className="border rounded-lg p-4 bg-gray-50 h-[500px] overflow-y-auto dark:bg-gray-900 dark:border-gray-700">
+              <div className="lg:w-1/4 flex flex-col gap-4">
+                <div className="border rounded-lg p-4 bg-gray-50 h-[250px] overflow-y-auto dark:bg-gray-900 dark:border-gray-700">
                   <h3 className="font-semibold mb-2 flex items-center">
                     <Info className="h-4 w-4 mr-1" />
                     Legend
                   </h3>
                   <TransactionLegend />
-                  
-                  <h3 className="font-semibold mt-4 mb-2">Details</h3>
-                  {transactionData.type === 'address' && (
-                    <div className="space-y-2 text-sm">
-                      <p><span className="font-medium">Address:</span> {transactionData.address}</p>
-                      <p><span className="font-medium">Balance:</span> {transactionData.balance} ETH</p>
-                      <p><span className="font-medium">Transaction Count:</span> {transactionData.transactionCount}</p>
-                      <p><span className="font-medium">Type:</span> {transactionData.isContract ? 'Contract' : 'EOA'}</p>
-                      <p><span className="font-medium">Transactions Shown:</span> {transactionData.transactions?.length || 0}</p>
-                    </div>
-                  )}
-                  
-                  {transactionData.type === 'transaction' && (
-                    <div className="space-y-2 text-sm">
-                      <p><span className="font-medium">Hash:</span> {transactionData.transaction.hash}</p>
-                      <p><span className="font-medium">From:</span> {transactionData.transaction.from}</p>
-                      <p><span className="font-medium">To:</span> {transactionData.transaction.to || 'Contract Creation'}</p>
-                      <p><span className="font-medium">Value:</span> {formatWeiToEth(transactionData.transaction.value)} ETH</p>
-                      <p><span className="font-medium">Block:</span> {transactionData.transaction.blockNumber}</p>
-                      <p><span className="font-medium">Status:</span> {transactionData.receipt?.status ? 'Success' : 'Failed'}</p>
-                    </div>
-                  )}
-                  
-                  {transactionData.type === 'block' && (
-                    <div className="space-y-2 text-sm">
-                      <p><span className="font-medium">Block Number:</span> {transactionData.block.number}</p>
-                      <p><span className="font-medium">Hash:</span> {transactionData.block.hash}</p>
-                      <p><span className="font-medium">Timestamp:</span> {formatTimestamp(transactionData.block.timestamp * 1000)}</p>
-                      <p><span className="font-medium">Transactions:</span> {transactionData.block.transactions?.length || 0}</p>
+                </div>
+                
+                <div className="border rounded-lg p-4 bg-gray-50 dark:bg-gray-900 dark:border-gray-700">
+                  <h3 className="font-semibold mb-4 flex items-center">
+                    <Info className="h-4 w-4 mr-1" />
+                    Node Details
+                  </h3>
+                  {selectedNodeDetails ? (
+                    renderNodeDetails()
+                  ) : (
+                    <div className="text-center py-4 text-gray-500 dark:text-gray-400">
+                      <p>Click on a node in the graph to view details</p>
                     </div>
                   )}
                 </div>

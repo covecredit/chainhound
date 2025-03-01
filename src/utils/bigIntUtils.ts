@@ -95,6 +95,21 @@ export function formatLargeNumber(value: string | number, decimals: number = 2):
 }
 
 /**
+ * Safely converts a number to a BigInt string
+ * @param value The number to convert
+ * @returns A string representation of the number
+ */
+export function safelyConvertNumberToBigIntString(value: number): string {
+  // Ensure we're working with a safe integer to avoid precision issues
+  if (Number.isSafeInteger(value)) {
+    return value.toString();
+  }
+  
+  // For non-safe integers, use a string representation
+  return value.toString();
+}
+
+/**
  * Formats a wei value to ETH with appropriate precision
  * @param weiValue The wei value as a string or BigInt
  * @returns Formatted ETH value
