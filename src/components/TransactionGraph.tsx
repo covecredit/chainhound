@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import * as d3 from 'd3';
 import { Wallet, Cog, Box, ArrowRight, Cuboid as Cube, AlertTriangle } from 'lucide-react';
 import { formatWeiToEth, safelyConvertBigIntToString } from '../utils/bigIntUtils';
+import TransactionLegend from './TransactionLegend';
 
 interface Node {
   id: string;
@@ -246,13 +247,7 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick, 
           } else if (d.type === 'transaction') {
             return d.hash ? d.hash : 'TX';
           } else if (d.type === 'block') {
-            let label = `Block #${d.blockNumber}`;
-            // Add timestamp if available
-            if (d.timestamp) {
-              const date = new Date(d.timestamp * 1000);
-              label = `#${d.blockNumber}`;
-            }
-            return label;
+            return `Block #${d.blockNumber}`;
           }
           return '';
         });
@@ -281,30 +276,6 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick, 
             });
         }
       });
-      
-      // Update positions on simulation tick
-      simulation.nodes(graphData.nodes as any).on('tick', () => {
-        link
-          .attr('x1', (d: any) => d.source.x)
-          .attr('y1', (d: any) => d.source.y)
-          .attr('x2', (d: any) => d.target.x)
-          .attr('y2', (d: any) => d.target.y);
-        
-        node.attr('transform', (d: any) => `translate(${d.x},${d.y})`);
-        
-        // Update link labels position
-        container.selectAll('.link-label')
-          .attr('x', function(d: any, i) {
-            const linkData = link.data()[i];
-            return linkData ? (linkData.source.x + linkData.target.x) / 2 : 0;
-          })
-          .attr('y', function(d: any, i) {
-            const linkData = link.data()[i];
-            return linkData ? (linkData.source.y + linkData.target.y) / 2 : 0;
-          });
-      });
-      
-      (simulation.force('link') as d3.ForceLink<any, any>).links(graphData.links);
       
       // Add legend to bottom left of the graph
       const legendContainer = svg.append('g')
@@ -411,6 +382,30 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick, 
           .attr('font-size', '8px')
           .text(item.label);
       });
+      
+      // Update positions on simulation tick
+      simulation.nodes(graphData.nodes as any).on('tick', () => {
+        link
+          .attr('x1', (d: any) => d.source.x)
+          .attr('y1', (d: any) => d.source.y)
+          .attr('x2', (d: any) => d.target.x)
+          .attr('y2', (d: any) => d.target.y);
+        
+        node.attr('transform', (d: any) => `translate(${d.x},${d.y})`);
+        
+        // Update link labels position
+        container.selectAll('.link-label')
+          .attr('x', function(d: any, i) {
+            const linkData = link.data()[i];
+            return linkData ? (linkData.source.x + linkData.target.x) / 2 : 0;
+          })
+          .attr('y', function(d: any, i) {
+            const linkData = link.data()[i];
+            return linkData ? (linkData.source.y + linkData.target.y) / 2 : 0;
+          });
+      });
+      
+      (simulation.force('link') as d3.ForceLink<any, any>).links(graphData.links);
       
       // Drag functions
       function dragstarted(event: any) {
@@ -699,7 +694,7 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick, 
   };
   
   return (
-    <div ref={containerRef} className="w-full h-[500px] relative">
+    <div ref={containerRef} className="w-full h-full relative">
       {errorMessage && (
         <div className="absolute top-4 left-4 right-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded flex items-center dark:bg-red-900/50 dark:border-red-800 dark:text-red-300">
           <AlertTriangle className="inline-block mr-2" size={16} />
