@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import * as d3 from 'd3';
 import { Wallet, Cog, Box, ArrowRight, Cuboid as Cube, AlertTriangle } from 'lucide-react';
 import { formatWeiToEth, safelyConvertBigIntToString } from '../utils/bigIntUtils';
@@ -32,12 +32,14 @@ interface GraphData {
 interface TransactionGraphProps {
   data: any;
   onNodeClick?: (node: Node) => void;
+  onNodeDoubleClick?: (node: Node) => void;
 }
 
-const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick }) => {
+const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick, onNodeDoubleClick }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const simulationRef = useRef<d3.Simulation<any, any> | null>(null);
   
   useEffect(() => {
     if (!data || !svgRef.current || !containerRef.current) return;
@@ -59,7 +61,7 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick }
       // Set up the SVG
       const svg = d3.select(svgRef.current);
       const width = containerRef.current.clientWidth;
-      const height = containerRef.current.clientHeight;
+      const height = containerRef.current.clientHeight || 500; // Default height if not set
       
       // Check if dark mode is enabled
       const isDarkMode = document.documentElement.classList.contains('dark');
@@ -89,6 +91,9 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick }
         .force('charge', d3.forceManyBody().strength(-300))
         .force('center', d3.forceCenter(width / 2, height / 2))
         .force('collision', d3.forceCollide().radius(50));
+      
+      // Store simulation in ref for later access
+      simulationRef.current = simulation;
       
       // Create a container for the graph
       const container = svg.append('g');
@@ -142,6 +147,12 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick }
           if (onNodeClick) {
             event.stopPropagation();
             onNodeClick(d);
+          }
+        })
+        .on('dblclick', function(event, d: any) {
+          if (onNodeDoubleClick) {
+            event.stopPropagation();
+            onNodeDoubleClick(d);
           }
         });
       
@@ -235,7 +246,13 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick }
           } else if (d.type === 'transaction') {
             return d.hash ? d.hash : 'TX';
           } else if (d.type === 'block') {
-            return `Block #${d.blockNumber}`;
+            let label = `Block #${d.blockNumber}`;
+            // Add timestamp if available
+            if (d.timestamp) {
+              const date = new Date(d.timestamp * 1000);
+              label = `#${d.blockNumber}`;
+            }
+            return label;
           }
           return '';
         });
@@ -289,6 +306,112 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick }
       
       (simulation.force('link') as d3.ForceLink<any, any>).links(graphData.links);
       
+      // Add legend to bottom left of the graph
+      const legendContainer = svg.append('g')
+        .attr('class', 'legend')
+        .attr('transform', `translate(20, ${height - 180})`);
+      
+      // Add background for legend
+      legendContainer.append('rect')
+        .attr('width', 150)
+        .attr('height', 170)
+        .attr('fill', isDarkMode ? 'rgba(31, 41, 55, 0.8)' : 'rgba(255, 255, 255, 0.8)')
+        .attr('stroke', isDarkMode ? '#4B5563' : '#E5E7EB')
+        .attr('stroke-width', 1)
+        .attr('rx', 5)
+        .attr('ry', 5);
+      
+      // Add legend title
+      legendContainer.append('text')
+        .attr('x', 10)
+        .attr('y', 20)
+        .attr('fill', isDarkMode ? '#E5E7EB' : '#111827')
+        .attr('font-size', '10px')
+        .attr('font-weight', 'bold')
+        .text('Legend');
+      
+      // Node types
+      const nodeTypes = [
+        { type: 'address', color: nodeColors.address, label: 'Address', icon: 'wallet' },
+        { type: 'contract', color: nodeColors.contract, label: 'Contract', icon: 'cog' },
+        { type: 'transaction', color: nodeColors.transaction, label: 'Transaction', icon: 'box' },
+        { type: 'block', color: nodeColors.block, label: 'Block', icon: 'cube' }
+      ];
+      
+      // Add node type legends
+      nodeTypes.forEach((item, i) => {
+        const y = 35 + i * 15;
+        
+        // Add circle
+        legendContainer.append('circle')
+          .attr('cx', 15)
+          .attr('cy', y)
+          .attr('r', 5)
+          .attr('fill', item.color);
+        
+        // Add label
+        legendContainer.append('text')
+          .attr('x', 25)
+          .attr('y', y + 3)
+          .attr('fill', isDarkMode ? '#E5E7EB' : '#111827')
+          .attr('font-size', '8px')
+          .text(item.label);
+      });
+      
+      // Add role legends
+      const roles = [
+        { role: 'from', color: roleColors.from, label: 'From Address' },
+        { role: 'to', color: roleColors.to, label: 'To Address' }
+      ];
+      
+      // Add role legends
+      roles.forEach((item, i) => {
+        const y = 35 + nodeTypes.length * 15 + 10 + i * 15;
+        
+        // Add circle
+        legendContainer.append('circle')
+          .attr('cx', 15)
+          .attr('cy', y)
+          .attr('r', 5)
+          .attr('fill', item.color);
+        
+        // Add label
+        legendContainer.append('text')
+          .attr('x', 25)
+          .attr('y', y + 3)
+          .attr('fill', isDarkMode ? '#E5E7EB' : '#111827')
+          .attr('font-size', '8px')
+          .text(item.label);
+      });
+      
+      // Add link type legends
+      const linkTypes = [
+        { type: 'send', color: linkColors.send, label: 'Send' },
+        { type: 'interact', color: linkColors.interact, label: 'Interact' }
+      ];
+      
+      // Add link type legends
+      linkTypes.forEach((item, i) => {
+        const y = 35 + nodeTypes.length * 15 + roles.length * 15 + 20 + i * 15;
+        
+        // Add line
+        legendContainer.append('line')
+          .attr('x1', 5)
+          .attr('y1', y)
+          .attr('x2', 25)
+          .attr('y2', y)
+          .attr('stroke', item.color)
+          .attr('stroke-width', 2);
+        
+        // Add label
+        legendContainer.append('text')
+          .attr('x', 30)
+          .attr('y', y + 3)
+          .attr('fill', isDarkMode ? '#E5E7EB' : '#111827')
+          .attr('font-size', '8px')
+          .text(item.label);
+      });
+      
       // Drag functions
       function dragstarted(event: any) {
         if (!event.active) simulation.alphaTarget(0.3).restart();
@@ -309,13 +432,15 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick }
       
       // Clean up when component unmounts
       return () => {
-        simulation.stop();
+        if (simulationRef.current) {
+          simulationRef.current.stop();
+        }
       };
     } catch (error) {
       console.error('Error rendering graph:', error);
       setErrorMessage(`Failed to render graph: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-  }, [data, onNodeClick]);
+  }, [data, onNodeClick, onNodeDoubleClick]);
   
   // Process the data into a format suitable for D3 graph visualization
   const processDataToGraph = (data: any): GraphData => {
@@ -350,7 +475,7 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick }
           data.transactions.forEach((tx: any, index: number) => {
             if (!tx || !tx.hash) return; // Skip invalid transactions
             
-            const txId = `tx-${index}-${tx.hash}`;
+            const txId = `tx-${index}-${tx.hash.substring(0, 8)}`;
             addNode(txId, 'transaction', { 
               value: tx.value, 
               hash: tx.hash, 
@@ -432,7 +557,7 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick }
                   source: txId, 
                   target: data.address, 
                   value: tx.value || '0', 
-                  type: 'receive',
+                  type: 'send',
                   gas: tx.gas,
                   gasPrice: tx.gasPrice,
                   gasUsed: tx.gasUsed
@@ -463,7 +588,7 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick }
         if (!tx) return { nodes: [], links: [] };
         
         // Add transaction node
-        const txId = `tx-${tx.hash}`;
+        const txId = `tx-${tx.hash ? tx.hash.substring(0, 8) : 'unknown'}`;
         addNode(txId, 'transaction', { 
           value: tx.value, 
           hash: tx.hash,
@@ -528,7 +653,7 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick }
           data.block.transactions.slice(0, maxTransactionsToShow).forEach((tx: any, index: number) => {
             if (!tx || !tx.hash) return;
             
-            const txId = `tx-${index}-${tx.hash}`;
+            const txId = `tx-${index}-${tx.hash.substring(0, 8)}`;
             addNode(txId, 'transaction', { 
               value: tx.value,
               hash: tx.hash,
@@ -574,7 +699,7 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick }
   };
   
   return (
-    <div ref={containerRef} className="w-full h-full relative">
+    <div ref={containerRef} className="w-full h-[500px] relative">
       {errorMessage && (
         <div className="absolute top-4 left-4 right-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded flex items-center dark:bg-red-900/50 dark:border-red-800 dark:text-red-300">
           <AlertTriangle className="inline-block mr-2" size={16} />

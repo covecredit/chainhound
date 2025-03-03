@@ -127,7 +127,9 @@ export function formatWeiToEth(weiValue: string | bigint | number): string {
       weiString = weiValue.toString();
     } else if (typeof weiValue === 'string') {
       // Remove '0x' prefix if present
-      weiString = weiValue.startsWith('0x') ? BigInt(weiValue).toString() : weiValue;
+      weiString = weiValue.startsWith('0x') ? 
+        BigInt(weiValue).toString() : 
+        weiValue.replace(/[^0-9]/g, ''); // Remove any non-numeric characters
     } else if (typeof weiValue === 'number') {
       weiString = weiValue.toString();
     } else {
@@ -135,7 +137,7 @@ export function formatWeiToEth(weiValue: string | bigint | number): string {
     }
     
     // Handle zero value
-    if (weiString === '0') {
+    if (weiString === '0' || weiString === '') {
       return '0';
     }
     

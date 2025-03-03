@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Download, Camera, Info, AlertTriangle, Loader, Clock, X, Settings, ChevronDown, ChevronUp, Trash2, Infinity, StopCircle, RefreshCw } from 'lucide-react';
+import { Search, Download, Camera, Info, AlertTriangle, Loader, Clock, X, Settings, ChevronDown, ChevronUp, Trash2, Infinity, ArrowLeft, ArrowRight } from 'lucide-react';
 import * as d3 from 'd3';
 import { toPng } from 'html-to-image';
 import TransactionGraph from '../components/TransactionGraph';
@@ -18,17 +18,6 @@ interface SearchOptions {
   maxBlocks: number;
   maxTransactions: number;
   includeInternalTxs: boolean;
-  retryErroredBlocks: boolean;
-}
-
-interface SearchProgress {
-  currentBlock: number;
-  startBlock: number;
-  endBlock: number;
-  blocksProcessed: number;
-  totalBlocks: number;
-  transactionsFound: number;
-  errors: number;
 }
 
 const TransactionViewer = () => {
@@ -43,12 +32,14 @@ const TransactionViewer = () => {
   const [searchOptions, setSearchOptions] = useState<SearchOptions>({
     maxBlocks: 1000,
     maxTransactions: 50,
-    includeInternalTxs: true,
-    retryErroredBlocks: true
+    includeInternalTxs: true
   });
   const [selectedNodeDetails, setSelectedNodeDetails] = useState<any>(null);
-  const [searchProgress, setSearchProgress] = useState<SearchProgress | null>(null);
-  const [cancelSearch, setCancelSearch] = useState(false);
+  const [searchProgress, setSearchProgress] = useState(0);
+  const [searchStatus, setSearchStatus] = useState('');
+  const [searchHistory, setSearchHistory] = useState<string[]>([]);
+  const [currentHistoryIndex, setCurrentHistoryIndex] = useState(-1);
+  const cancelSearchRef = useRef<boolean>(false);
   const graphRef = useRef<HTMLDivElement>(null);
   const searchHistoryRef = useRef<HTMLDivElement>(null);
   const advancedOptionsRef = useRef<HTMLDivElement>(null);
@@ -109,6 +100,11 @@ const TransactionViewer = () => {
     }
   }, [isConnected, web3]);
   
+  const cancelSearch = () => {
+    cancelSearchRef.current = true;
+    setSearchStatus('Cancelling search...');
+  };
+  
   const handleSearch = async (query?: string) => {
     const searchQuery = query || searchInput;
     if (!searchQuery) return;
@@ -122,17 +118,34 @@ const TransactionViewer = () => {
     setError('');
     setTransactionData(null);
     setSelectedNodeDetails(null);
-    setSearchProgress(null);
-    setCancelSearch(false);
+    setSearchProgress(0);
+    setSearchStatus('Initializing search...');
+    cancelSearchRef.current = false;
     
     try {
       // Add to recent searches
       addToRecentSearches(searchQuery);
       
+      // Add to search history for navigation
+      if (currentHistoryIndex < searchHistory.length - 1) {
+        // If we're not at the end of history, truncate it
+        const newHistory = searchHistory.slice(0, currentHistoryIndex + 1);
+        newHistory.push(searchQuery);
+        setSearchHistory(newHistory);
+        setCurrentHistoryIndex(newHistory.length - 1);
+      } else {
+        // Add to the end of history
+        setSearchHistory([...searchHistory, searchQuery]);
+        setCurrentHistoryIndex(searchHistory.length);
+      }
+      
       if (debugMode) {
         console.log(`[ChainHound Debug] Searching for: ${searchQuery}`);
         console.log(`[ChainHound Debug] Search options:`, searchOptions);
       }
+      
+      // Check if we should retry error blocks
+      const retryErrorBlocks = localStorage.getItem('chainhound_retry_error_blocks') !== 'false';
       
       // Determine what type of input we're dealing with
       let data;
@@ -144,6 +157,7 @@ const TransactionViewer = () => {
         }
         
         try {
+          setSearchStatus('Fetching address information...');
           const balance = await web3.eth.getBalance(searchQuery);
           const txCount = await web3.eth.getTransactionCount(searchQuery);
           const code = await web3.eth.getCode(searchQuery);
@@ -156,6 +170,7 @@ const TransactionViewer = () => {
           }
           
           // Get recent transactions
+          setSearchStatus('Fetching current block number...');
           const blockNumber = await web3.eth.getBlockNumber();
           
           if (debugMode) {
@@ -178,41 +193,30 @@ const TransactionViewer = () => {
             if (isUnlimitedTransactions) console.log(`[ChainHound Debug] Unlimited transaction collection enabled`);
           }
           
-          // Initialize search progress
-          setSearchProgress({
-            currentBlock: Number(blockNumber),
-            startBlock: startBlockNum,
-            endBlock: Number(blockNumber),
-            blocksProcessed: 0,
-            totalBlocks: Number(blockNumber) - startBlockNum + 1,
-            transactionsFound: 0,
-            errors: 0
-          });
-          
           // Get blocks in batches to avoid timeout
           const batchSize = 10;
           const transactions = [];
           let transactionsFound = 0;
           let searchLimitReached = false;
-          let errorsCount = 0;
           
-          // Get errored blocks if retry option is enabled
-          let erroredBlocks: number[] = [];
-          if (searchOptions.retryErroredBlocks) {
-            const errorBlocks = await blockCache.getErrorBlocksInRange(startBlockNum, Number(blockNumber));
-            erroredBlocks = errorBlocks.map(block => block.blockNumber);
-            if (debugMode && erroredBlocks.length > 0) {
-              console.log(`[ChainHound Debug] Found ${erroredBlocks.length} errored blocks to retry`);
+          // If retry error blocks is enabled, get error blocks in range
+          let errorBlocks: number[] = [];
+          if (retryErrorBlocks) {
+            try {
+              const errorBlocksData = await blockCache.getErrorBlocksInRange(startBlockNum, Number(blockNumber));
+              errorBlocks = errorBlocksData.map(eb => eb.blockNumber);
+              if (errorBlocks.length > 0 && debugMode) {
+                console.log(`[ChainHound Debug] Found ${errorBlocks.length} error blocks to retry`);
+              }
+            } catch (error) {
+              console.error('Error fetching error blocks:', error);
             }
           }
           
           for (let i = Number(blockNumber); i >= startBlockNum; i -= batchSize) {
             // Check if search was cancelled
-            if (cancelSearch) {
-              if (debugMode) {
-                console.log(`[ChainHound Debug] Search cancelled by user`);
-              }
-              throw new Error('Search cancelled by user');
+            if (cancelSearchRef.current) {
+              throw new Error("Search cancelled by user");
             }
             
             // Check if we've reached the transaction limit (unless unlimited)
@@ -224,30 +228,25 @@ const TransactionViewer = () => {
             const endBlock = i;
             const startBatchBlock = Math.max(startBlockNum, i - batchSize + 1);
             
+            // Update progress
+            const totalBlocks = Number(blockNumber) - startBlockNum;
+            const blocksProcessed = Number(blockNumber) - endBlock;
+            const progress = Math.min(100, Math.round((blocksProcessed / totalBlocks) * 100));
+            setSearchProgress(progress);
+            setSearchStatus(`Scanning blocks ${startBatchBlock} to ${endBlock}...`);
+            
             if (debugMode) {
               console.log(`[ChainHound Debug] Fetching batch from block ${startBatchBlock} to ${endBlock}`);
             }
             
             try {
-              // Update search progress
-              setSearchProgress(prev => {
-                if (!prev) return null;
-                return {
-                  ...prev,
-                  currentBlock: endBlock,
-                  blocksProcessed: prev.blocksProcessed + (endBlock - startBatchBlock + 1),
-                  transactionsFound,
-                  errors: errorsCount
-                };
-              });
-              
               // Check if blocks are in cache first
               const cachedBlockNumbers = await blockCache.getCachedBlockNumbers(startBatchBlock, endBlock);
               const blocksToFetch = [];
               
               for (let j = endBlock; j >= startBatchBlock; j--) {
-                // Include blocks that are not cached or are in the errored blocks list (if retry is enabled)
-                if (!cachedBlockNumbers.includes(j) || (searchOptions.retryErroredBlocks && erroredBlocks.includes(j))) {
+                // Add block to fetch if it's not cached or if it's an error block we want to retry
+                if (!cachedBlockNumbers.includes(j) || (retryErrorBlocks && errorBlocks.includes(j))) {
                   blocksToFetch.push(j);
                 }
               }
@@ -262,6 +261,11 @@ const TransactionViewer = () => {
                     if (block) {
                       // Cache the block for future use
                       blockCache.cacheBlock(block);
+                      
+                      // If this was an error block, remove it from error store
+                      if (errorBlocks.includes(blockNum)) {
+                        blockCache.removeErrorBlock(blockNum);
+                      }
                     }
                     return block;
                   })
@@ -271,17 +275,6 @@ const TransactionViewer = () => {
                     }
                     // Record the error in the cache
                     blockCache.recordErrorBlock(blockNum, 'fetch_error', err.message || 'Unknown error');
-                    errorsCount++;
-                    
-                    // Update search progress with error count
-                    setSearchProgress(prev => {
-                      if (!prev) return null;
-                      return {
-                        ...prev,
-                        errors: errorsCount
-                      };
-                    });
-                    
                     return null;
                   })
               );
@@ -311,15 +304,6 @@ const TransactionViewer = () => {
                   transactions.push(...txsWithTimestamp);
                   transactionsFound += relatedTxs.length;
                   
-                  // Update search progress with transaction count
-                  setSearchProgress(prev => {
-                    if (!prev) return null;
-                    return {
-                      ...prev,
-                      transactionsFound
-                    };
-                  });
-                  
                   // Check if we've reached the transaction limit (unless unlimited)
                   if (!isUnlimitedTransactions && transactionsFound >= searchOptions.maxTransactions) {
                     searchLimitReached = true;
@@ -332,17 +316,6 @@ const TransactionViewer = () => {
               }
             } catch (error) {
               console.error('Error processing block batch:', error);
-              errorsCount++;
-              
-              // Update search progress with error count
-              setSearchProgress(prev => {
-                if (!prev) return null;
-                return {
-                  ...prev,
-                  errors: errorsCount
-                };
-              });
-              
               if (debugMode) {
                 console.log(`[ChainHound Debug] Error processing block batch:`, error);
               }
@@ -353,7 +326,6 @@ const TransactionViewer = () => {
           
           if (debugMode) {
             console.log(`[ChainHound Debug] Found ${transactions.length} related transactions`);
-            console.log(`[ChainHound Debug] Encountered ${errorsCount} errors during search`);
           }
           
           // Determine how many transactions to display
@@ -368,8 +340,7 @@ const TransactionViewer = () => {
             transactionCount: txCount,
             isContract,
             transactions: displayTransactions,
-            searchLimitReached,
-            errorsCount
+            searchLimitReached
           };
           
           if (debugMode) {
@@ -386,6 +357,7 @@ const TransactionViewer = () => {
         }
         
         try {
+          setSearchStatus('Fetching transaction data...');
           const tx = await web3.eth.getTransaction(searchQuery);
           
           if (!tx) {
@@ -396,7 +368,10 @@ const TransactionViewer = () => {
             console.log(`[ChainHound Debug] Transaction found:`, tx);
           }
           
+          setSearchStatus('Fetching transaction receipt...');
           const receipt = await web3.eth.getTransactionReceipt(searchQuery);
+          
+          setSearchStatus('Fetching block data...');
           const block = await web3.eth.getBlock(tx.blockNumber);
           
           if (debugMode) {
@@ -427,15 +402,24 @@ const TransactionViewer = () => {
         }
         
         try {
+          setSearchStatus('Fetching block data...');
           // Check if block is in cache first
           let block = await blockCache.getBlock(Number(searchQuery));
           
-          if (!block) {
+          // If retry error blocks is enabled and this is an error block, try to fetch it again
+          const isErrorBlock = retryErrorBlocks && (await blockCache.getErrorBlocksInRange(Number(searchQuery), Number(searchQuery))).length > 0;
+          
+          if (!block || isErrorBlock) {
             block = await web3.eth.getBlock(Number(searchQuery), true);
             
             if (block) {
               // Cache the block for future use
               blockCache.cacheBlock(block);
+              
+              // If this was an error block, remove it from error store
+              if (isErrorBlock) {
+                blockCache.removeErrorBlock(Number(searchQuery));
+              }
             }
           }
           
@@ -466,13 +450,45 @@ const TransactionViewer = () => {
       // Convert any BigInt values to strings to avoid serialization issues
       const safeData = safelyConvertBigIntToString(data);
       setTransactionData(safeData);
+      
+      // Set initial node details based on the search type
+      if (safeData.type === 'address') {
+        setSelectedNodeDetails({
+          id: safeData.address,
+          type: safeData.isContract ? 'contract' : 'address',
+          data: {
+            address: safeData.address,
+            balance: safeData.balance,
+            transactionCount: safeData.transactionCount,
+            isContract: safeData.isContract
+          }
+        });
+      } else if (safeData.type === 'transaction' && safeData.transaction) {
+        setSelectedNodeDetails({
+          type: 'transaction',
+          hash: safeData.transaction.hash,
+          blockNumber: safeData.transaction.blockNumber,
+          timestamp: safeData.transaction.timestamp,
+          value: safeData.transaction.value,
+          data: safeData.transaction
+        });
+      } else if (safeData.type === 'block' && safeData.block) {
+        setSelectedNodeDetails({
+          type: 'block',
+          blockNumber: safeData.block.number,
+          hash: safeData.block.hash,
+          timestamp: safeData.block.timestamp,
+          data: safeData.block
+        });
+      }
     } catch (err: any) {
       console.error('Error fetching blockchain data:', err);
       setError(err.message || 'Failed to fetch blockchain data');
       setTransactionData(null);
     } finally {
       setIsLoading(false);
-      setSearchProgress(null);
+      setSearchProgress(100);
+      setSearchStatus('Search completed');
     }
   };
   
@@ -632,15 +648,44 @@ const TransactionViewer = () => {
     setSelectedNodeDetails(node);
   };
   
-  // Calculate search progress percentage
-  const calculateProgressPercentage = () => {
-    if (!searchProgress) return 0;
-    return Math.min(100, Math.round((searchProgress.blocksProcessed / searchProgress.totalBlocks) * 100));
+  // Handle node double click in the graph - search for the node
+  const handleNodeDoubleClick = (node: any) => {
+    let searchValue = '';
+    
+    if (node.type === 'address' || node.type === 'contract') {
+      searchValue = node.id;
+    } else if (node.type === 'transaction' && node.hash) {
+      searchValue = node.hash;
+    } else if (node.type === 'block' && node.blockNumber) {
+      searchValue = node.blockNumber.toString();
+    }
+    
+    if (searchValue) {
+      setSearchInput(searchValue);
+      handleSearch(searchValue);
+    }
   };
   
-  // Handle cancel search
-  const handleCancelSearch = () => {
-    setCancelSearch(true);
+  // Navigate to previous search in history
+  const goBack = () => {
+    if (currentHistoryIndex > 0) {
+      const newIndex = currentHistoryIndex - 1;
+      setCurrentHistoryIndex(newIndex);
+      const previousSearch = searchHistory[newIndex];
+      setSearchInput(previousSearch);
+      handleSearch(previousSearch);
+    }
+  };
+  
+  // Navigate to next search in history
+  const goForward = () => {
+    if (currentHistoryIndex < searchHistory.length - 1) {
+      const newIndex = currentHistoryIndex + 1;
+      setCurrentHistoryIndex(newIndex);
+      const nextSearch = searchHistory[newIndex];
+      setSearchInput(nextSearch);
+      handleSearch(nextSearch);
+    }
   };
   
   // Render details for the selected node
@@ -750,6 +795,34 @@ const TransactionViewer = () => {
         
         <div className="flex flex-col space-y-4">
           <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
+            {/* Navigation buttons */}
+            <div className="flex space-x-1">
+              <button
+                onClick={goBack}
+                disabled={currentHistoryIndex <= 0}
+                className={`p-2 rounded-md ${
+                  currentHistoryIndex <= 0
+                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed dark:bg-gray-700 dark:text-gray-500'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
+                }`}
+                title="Go back"
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </button>
+              <button
+                onClick={goForward}
+                disabled={currentHistoryIndex >= searchHistory.length - 1}
+                className={`p-2 rounded-md ${
+                  currentHistoryIndex >= searchHistory.length - 1
+                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed dark:bg-gray-700 dark:text-gray-500'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
+                }`}
+                title="Go forward"
+              >
+                <ArrowRight className="h-5 w-5" />
+              </button>
+            </div>
+            
             <div className="flex-1 relative">
               <div className="relative flex items-center">
                 <input 
@@ -908,19 +981,6 @@ const TransactionViewer = () => {
                         Include internal transactions
                       </label>
                     </div>
-                    
-                    <div className="flex items-center">
-                      <input 
-                        type="checkbox"
-                        id="retryErroredBlocks"
-                        checked={searchOptions.retryErroredBlocks}
-                        onChange={(e) => updateSearchOptions({ retryErroredBlocks: e.target.checked })}
-                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600"
-                      />
-                      <label htmlFor="retryErroredBlocks" className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
-                        Retry previously errored blocks
-                      </label>
-                    </div>
                   </div>
                 </div>
               )}
@@ -928,148 +988,120 @@ const TransactionViewer = () => {
             
             <button 
               onClick={() => handleSearch()}
-              disabled={isLoading || !isConnected}
-              className={`text-white py-2 px-4 rounded transition flex items-center justify-center ${isConnected ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-gray-400 cursor-not-allowed'}`}
+              disabled={isLoading || !searchInput}
+              className={`px-4 py-2 rounded-md flex items-center justify-center ${
+                isLoading || !searchInput 
+                  ? 'bg-gray-300 cursor-not-allowed dark:bg-gray-600' 
+                  : 'bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600'
+              } text-white`}
             >
               {isLoading ? (
-                <div className="flex items-center">
-                  <Loader className="h-5 w-5 mr-2 animate-spin" />
-                  <span>Searching...</span>
-                </div>
+                <Loader className="h-5 w-5 animate-spin" />
               ) : (
-                <>
-                  <Search className="h-5 w-5 mr-1" />
-                  <span>Search</span>
-                </>
+                <Search className="h-5 w-5" />
               )}
             </button>
-            
-            {isLoading && (
-              <button 
-                onClick={handleCancelSearch}
-                className="bg-red-600 text-white py-2 px-4 rounded hover:bg-red-700 transition flex items-center justify-center"
-              >
-                <StopCircle className="h-5 w-5 mr-1" />
-                <span>Cancel</span>
-              </button>
-            )}
           </div>
           
-          {/* Search progress bar */}
-          {searchProgress && (
-            <div className="mt-2">
-              <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400 mb-1">
-                <span>Scanning blocks {searchProgress.currentBlock} to {searchProgress.startBlock}</span>
-                <span>{calculateProgressPercentage()}% complete</span>
+          {/* Status and progress */}
+          {isLoading && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-gray-600 dark:text-gray-400">{searchStatus}</p>
+                <button 
+                  onClick={cancelSearch}
+                  className="text-xs text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 flex items-center"
+                >
+                  <X className="h-3 w-3 mr-1" />
+                  Cancel
+                </button>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
                 <div 
-                  className="bg-indigo-600 h-2.5 rounded-full" 
-                  style={{ width: `${calculateProgressPercentage()}%` }}
+                  className="bg-indigo-600 h-2.5 rounded-full dark:bg-indigo-500" 
+                  style={{ width: `${searchProgress}%` }}
                 ></div>
               </div>
-              <div className="flex justify-between text-xs mt-1">
-                <span className="text-gray-600 dark:text-gray-400">
-                  Processed {searchProgress.blocksProcessed} of {searchProgress.totalBlocks} blocks
-                </span>
-                <span className="text-indigo-600 dark:text-indigo-400">
-                  Found {searchProgress.transactionsFound} transactions
-                </span>
-                {searchProgress.errors > 0 && (
-                  <span className="text-red-600 dark:text-red-400">
-                    {searchProgress.errors} errors
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-          
-          {error && (
-            <div className="mt-4 p-3 bg-red-100 text-red-700 rounded flex items-start dark:bg-red-900 dark:text-red-200">
-              <AlertTriangle className="h-5 w-5 mr-2 flex-shrink-0 mt-0.5" />
-              <p>{error}</p>
-            </div>
-          )}
-          
-          {!isConnected && (
-            <div className="mt-4 p-3 bg-yellow-100 text-yellow-700 rounded flex items-start dark:bg-yellow-900 dark:text-yellow-200">
-              <AlertTriangle className="h-5 w-5 mr-2 flex-shrink-0 mt-0.5" />
-              <p>Not connected to Ethereum network. Please check your connection in Settings.</p>
             </div>
           )}
         </div>
       </div>
       
+      {error && (
+        <div className="bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 p-4 rounded">
+          <div className="flex items-center">
+            <AlertTriangle className="h-5 w-5 text-red-500 mr-2" />
+            <p className="text-red-700 dark:text-red-400">{error}</p>
+          </div>
+        </div>
+      )}
+      
       {transactionData && (
-        <>
-          <div className="bg-white p-6 rounded-lg shadow-md dark:bg-gray-800 dark:text-white">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 space-y-2 sm:space-y-0">
-              <h2 className="text-xl font-semibold">Transaction Graph</h2>
-              <div className="flex flex-wrap gap-2">
-                <button 
-                  onClick={() => captureScreenshot(false)}
-                  className="bg-gray-100 hover:bg-gray-200 text-gray-700 py-1 px-3 rounded flex items-center text-sm dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
-                >
-                  <Camera className="h-4 w-4 mr-1" />
-                  <span>Capture</span>
-                </button>
-                <button 
-                  onClick={() => exportData('json')}
-                  className="bg-gray-100 hover:bg-gray-200 text-gray-700 py-1 px-3 rounded flex items-center text-sm dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
-                >
-                  <Download className="h-4 w-4 mr-1" />
-                  <span>Export JSON</span>
-                </button>
-              </div>
+        <div className="bg-white p-6 rounded-lg shadow-md space-y-4 dark:bg-gray-800">
+          <div className="flex justify-between items-center">
+            <h2 className="text-xl font-semibold">Transaction Graph</h2>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => captureScreenshot(false)}
+                className="flex items-center px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 rounded"
+              >
+                <Camera className="h-4 w-4 mr-1" />
+                Screenshot
+              </button>
+              <button
+                onClick={() => exportData('json')}
+                className="flex items-center px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 rounded"
+              >
+                <Download className="h-4 w-4 mr-1" />
+                Export
+              </button>
             </div>
-            
-            {transactionData.searchLimitReached && (
-              <div className="mb-4 p-2 bg-yellow-50 text-yellow-700 rounded-md text-sm flex items-center dark:bg-yellow-900/30 dark:text-yellow-200">
-                <AlertTriangle className="h-4 w-4 mr-2" />
-                <span>
-                  Showing {transactionData.transactions?.length || 0} transactions (limit reached). 
-                  Use advanced options to increase the limit for a more complete search.
-                </span>
-              </div>
-            )}
-            
-            {transactionData.errorsCount > 0 && (
-              <div className="mb-4 p-2 bg-red-50 text-red-700 rounded-md text-sm flex items-center dark:bg-red-900/30 dark:text-red-200">
-                <AlertTriangle className="h-4 w-4 mr-2" />
-                <span>
-                  Encountered {transactionData.errorsCount} errors while fetching blocks. 
-                  Some data may be missing.
-                </span>
-              </div>
-            )}
-            
-            <div className="relative border rounded-lg p-4 bg-gray-50 h-[500px] dark:bg-gray-900 dark:border-gray-700">
-              <div ref={graphRef} className="w-full h-full">
-                <TransactionGraph data={transactionData} onNodeClick={handleNodeClick} />
-              </div>
-              
-              {/* Legend inside the graph */}
-              <div className="absolute bottom-4 left-4 bg-white/90 dark:bg-gray-800/90 p-3 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
-                <TransactionLegend />
-              </div>
+          </div>
+          
+          {transactionData.searchLimitReached && (
+            <div className="p-2 bg-yellow-50 text-yellow-700 rounded-md text-sm flex items-center dark:bg-yellow-900/30 dark:text-yellow-200">
+              <AlertTriangle className="h-4 w-4 mr-2 flex-shrink-0" />
+              <span>
+                Showing {transactionData.transactions?.length || 0} transactions (limit reached). 
+                Use advanced options to increase the limit for a more complete search.
+              </span>
             </div>
-            
-            {/* Node details beneath the graph */}
-            <div className="mt-4 border rounded-lg p-4 bg-gray-50 dark:bg-gray-900 dark:border-gray-700">
-              <h3 className="font-semibold mb-4 flex items-center">
+          )}
+          
+          <div className="flex-1" ref={graphRef}>
+            <TransactionGraph 
+              data={transactionData} 
+              onNodeClick={handleNodeClick}
+              onNodeDoubleClick={handleNodeDoubleClick}
+            />
+          </div>
+          
+          {/* Node details section below the graph */}
+          <div className="mt-4 bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="font-medium flex items-center">
                 <Info className="h-4 w-4 mr-1" />
                 Node Details
               </h3>
-              {selectedNodeDetails ? (
-                renderNodeDetails()
-              ) : (
-                <div className="text-center py-4 text-gray-500 dark:text-gray-400">
-                  <p>Click on a node in the graph to view details</p>
-                </div>
+              {selectedNodeDetails && (
+                <button 
+                  onClick={() => setSelectedNodeDetails(null)}
+                  className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                >
+                  <X className="h-4 w-4" />
+                </button>
               )}
             </div>
+            
+            {selectedNodeDetails ? (
+              renderNodeDetails()
+            ) : (
+              <div className="text- center py-4 text-gray-500 dark:text-gray-400">
+                <p>Click on a node in the graph to view details. Double-click to search for that node.</p>
+              </div>
+            )}
           </div>
-        </>
+        </div>
       )}
     </div>
   );

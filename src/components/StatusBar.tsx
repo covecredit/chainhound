@@ -141,7 +141,7 @@ const StatusBar = () => {
                   <span>Updated: {getTimeSinceUpdate()}</span>
                 </div>
                 
-                {networkInfo.chainId && (
+                {networkInfo.chainId !== undefined && (
                   <div className="flex items-center whitespace-nowrap status-bar-item">
                     <span>Chain ID: {networkInfo.chainId}</span>
                   </div>

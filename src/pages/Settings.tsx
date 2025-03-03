@@ -18,11 +18,13 @@ const Settings = () => {
   const [localDebugMode, setLocalDebugMode] = useState(debugMode);
   const [localAutoReconnect, setLocalAutoReconnect] = useState(autoReconnect);
   const [secureConnectionsOnly, setSecureConnectionsOnly] = useState(true);
+  const [retryErrorBlocks, setRetryErrorBlocks] = useState(true);
   const [cacheStats, setCacheStats] = useState({
     totalBlocks: 0,
     oldestBlock: undefined as number | undefined,
     newestBlock: undefined as number | undefined,
-    sizeEstimate: '0 B'
+    sizeEstimate: '0 B',
+    errorBlocks: 0
   });
   const [isExportingCache, setIsExportingCache] = useState(false);
   const [isImportingCache, setIsImportingCache] = useState(false);
@@ -67,6 +69,14 @@ const Settings = () => {
     const savedSecureConnectionsOnly = localStorage.getItem('chainhound_secure_connections_only');
     if (savedSecureConnectionsOnly !== null) {
       setSecureConnectionsOnly(savedSecureConnectionsOnly === 'true');
+    }
+    
+    const savedRetryErrorBlocks = localStorage.getItem('chainhound_retry_error_blocks');
+    if (savedRetryErrorBlocks !== null) {
+      setRetryErrorBlocks(savedRetryErrorBlocks === 'true');
+    } else {
+      // Default to true if not set
+      localStorage.setItem('chainhound_retry_error_blocks', 'true');
     }
     
     // Load cache stats
@@ -116,6 +126,7 @@ const Settings = () => {
       localStorage.setItem('chainhound_refresh_interval', String(refreshInterval));
       localStorage.setItem('chainhound_dark_mode', String(darkMode));
       localStorage.setItem('chainhound_secure_connections_only', String(secureConnectionsOnly));
+      localStorage.setItem('chainhound_retry_error_blocks', String(retryErrorBlocks));
       
       // Apply dark mode
       applyDarkMode(darkMode);
@@ -231,6 +242,18 @@ const Settings = () => {
     }
   };
   
+  const handleClearErrorBlocks = async () => {
+    if (confirm('Are you sure you want to clear all error blocks? This will remove all records of blocks that failed to fetch.')) {
+      try {
+        await blockCache.clearErrorBlocks();
+        await loadCacheStats();
+        setSaveMessage({ type: 'success', text: 'Error blocks cleared successfully!' });
+      } catch (error: any) {
+        setSaveMessage({ type: 'error', text: error.message || 'Failed to clear error blocks.' });
+      }
+    }
+  };
+  
   const handleResetSettings = async () => {
     setIsResetting(true);
     try {
@@ -241,6 +264,7 @@ const Settings = () => {
       setLocalDebugMode(debugMode);
       setLocalAutoReconnect(autoReconnect);
       setDarkMode(document.documentElement.classList.contains('dark'));
+      setRetryErrorBlocks(true);
       
       setSaveMessage({ type: 'success', text: 'Settings reset to defaults!' });
     } catch (error: any) {
@@ -442,6 +466,20 @@ const Settings = () => {
               <div className="flex items-center">
                 <input 
                   type="checkbox"
+                  id="retryErrorBlocks"
+                  checked={retryErrorBlocks}
+                  onChange={(e) => setRetryErrorBlocks(e.target.checked)}
+                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600"
+                />
+                <label htmlFor="retryErrorBlocks" className="ml-2 flex items-center text-sm text-gray-700 dark:text-gray-300">
+                  <RefreshCw className="h-4 w-4 mr-1 text-indigo-600" />
+                  Automatically retry previously failed blocks during searches
+                </label>
+              </div>
+              
+              <div className="flex items-center">
+                <input 
+                  type="checkbox"
                   id="darkMode"
                   checked={darkMode}
                   onChange={(e) => setDarkMode(e.target.checked)}
@@ -497,6 +535,9 @@ const Settings = () => {
                       <p>Block range: <span className="font-medium">{cacheStats.oldestBlock.toLocaleString()} - {cacheStats.newestBlock.toLocaleString()}</span></p>
                     )}
                     <p>Estimated size: <span className="font-medium">{cacheStats.sizeEstimate}</span></p>
+                    <p>Error blocks: <span className={`font-medium ${cacheStats.errorBlocks > 0 ? 'text-red-600 dark:text-red-400' : ''}`}>
+                      {cacheStats.errorBlocks.toLocaleString()}
+                    </span></p>
                   </div>
                 </div>
                 
@@ -541,19 +582,31 @@ const Settings = () => {
                       type="file"
                       ref={fileInputRef}
                       onChange={handleImportCache}
-                      accept=".json"
-                      className="hidden"
+                      accept=".json,.zip"
+                      className="hidden" 
                     />
                   </div>
                   
-                  <button 
-                    onClick={handleClearCache}
-                    disabled={cacheStats.totalBlocks === 0}
-                    className={`flex items-center justify-center px-3 py-2 text-sm rounded ${cacheStats.totalBlocks === 0 ? 'bg-gray-300 text-gray-500 cursor-not-allowed dark:bg-gray-600 dark:text-gray-400' : 'bg-red-600 text-white hover:bg-red-700'}`}
-                  >
-                    <Trash2 className="h-4 w-4 mr-1" />
-                    Clear Cache
-                  </button>
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={handleClearCache}
+                      disabled={cacheStats.totalBlocks === 0}
+                      className={`flex items-center justify-center px-3 py-2 text-sm rounded ${cacheStats.totalBlocks === 0 ? 'bg-gray-300 text-gray-500 cursor-not-allowed dark:bg-gray-600 dark:text-gray-400' : 'bg-red-600 text-white hover:bg-red-700'}`}
+                    >
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      Clear Cache
+                    </button>
+                    
+                    {cacheStats.errorBlocks > 0 && (
+                      <button 
+                        onClick={handleClearErrorBlocks}
+                        className="bg-amber-600 text-white px-3 py-2 rounded hover:bg-amber-700 text-sm flex items-center justify-center"
+                      >
+                        <Trash2 className="h-4 w-4 mr-1" />
+                        Clear Error Blocks
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
               
@@ -564,6 +617,15 @@ const Settings = () => {
                   Exported cache files can be shared between devices or saved as backups.
                 </p>
               </div>
+              
+              {cacheStats.errorBlocks > 0 && (
+                <div className="mt-2 p-2 bg-amber-50 text-amber-700 rounded-md text-xs flex items-start dark:bg-amber-900/30 dark:text-amber-200">
+                  <AlertTriangle className="h-3 w-3 mr-1 mt-0.5 flex-shrink-0" />
+                  <p>
+                    There are {cacheStats.errorBlocks} blocks that failed to fetch. These will be retried during searches if "Automatically retry previously failed blocks" is enabled.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
           

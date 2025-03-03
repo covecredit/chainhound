@@ -60,6 +60,12 @@ class BlockCache {
     }
     
     try {
+      // Validate block has a number property
+      if (block.number === undefined || block.number === null) {
+        console.warn('Attempted to cache block without a valid number property');
+        return;
+      }
+      
       // Convert any BigInt values to strings before storing
       const safeBlock = this.convertBigIntToString(block);
       
@@ -68,9 +74,9 @@ class BlockCache {
       
       // If this block was previously in the error store, remove it
       try {
-        await db.delete(this.ERROR_STORE_NAME, block.number);
+        await this.removeErrorBlock(block.number);
       } catch (e) {
-        // Ignore errors if the block wasn't in the error store
+        // Silently ignore errors if the block wasn't in the error store
       }
     } catch (error) {
       console.error('Failed to cache block:', error);
@@ -89,8 +95,16 @@ class BlockCache {
       const db = await this.dbPromise;
       const tx = db.transaction(this.STORE_NAME, 'readwrite');
       
+      const validBlocks = blocks.filter(block => 
+        block.number !== undefined && block.number !== null
+      );
+      
+      if (validBlocks.length !== blocks.length) {
+        console.warn(`Filtered out ${blocks.length - validBlocks.length} blocks with invalid number property`);
+      }
+      
       await Promise.all([
-        ...blocks.map(block => {
+        ...validBlocks.map(block => {
           // Convert any BigInt values to strings before storing
           const safeBlock = this.convertBigIntToString(block);
           return tx.store.put(safeBlock);
@@ -99,11 +113,13 @@ class BlockCache {
       ]);
       
       // Remove these blocks from the error store if they exist
-      const errorTx = db.transaction(this.ERROR_STORE_NAME, 'readwrite');
-      await Promise.all([
-        ...blocks.map(block => errorTx.store.delete(block.number)),
-        errorTx.done
-      ]);
+      for (const block of validBlocks) {
+        try {
+          await this.removeErrorBlock(block.number);
+        } catch (e) {
+          // Silently ignore errors if the block wasn't in the error store
+        }
+      }
     } catch (error) {
       console.error('Failed to cache blocks:', error);
     }
@@ -118,6 +134,12 @@ class BlockCache {
     }
     
     try {
+      // Validate blockNumber
+      if (blockNumber === undefined || blockNumber === null || isNaN(blockNumber)) {
+        console.warn('Attempted to record error block with invalid blockNumber:', blockNumber);
+        return;
+      }
+      
       const db = await this.dbPromise;
       await db.put(this.ERROR_STORE_NAME, {
         blockNumber,
@@ -128,6 +150,39 @@ class BlockCache {
       });
     } catch (error) {
       console.error('Failed to record error block:', error);
+    }
+  }
+
+  /**
+   * Remove a block from the error store
+   */
+  async removeErrorBlock(blockNumber: number): Promise<void> {
+    if (!this.isInitialized) {
+      await this.dbPromise;
+    }
+    
+    try {
+      if (blockNumber === undefined || blockNumber === null || isNaN(blockNumber)) {
+        // Just return silently instead of warning to avoid console spam
+        return;
+      }
+      
+      const db = await this.dbPromise;
+      
+      // Check if the error block exists before trying to delete it
+      try {
+        const errorBlock = await db.get(this.ERROR_STORE_NAME, blockNumber);
+        if (errorBlock) {
+          await db.delete(this.ERROR_STORE_NAME, blockNumber);
+        }
+      } catch (getError) {
+        // If there's an error getting the block, don't try to delete it
+        // This prevents the "Failed to remove error block" errors
+        return;
+      }
+    } catch (error) {
+      // Silently handle errors to prevent console spam
+      // This is a non-critical operation
     }
   }
 
@@ -157,6 +212,14 @@ class BlockCache {
     }
     
     try {
+      // Validate input
+      if (startBlock === undefined || endBlock === undefined || 
+          startBlock === null || endBlock === null ||
+          isNaN(startBlock) || isNaN(endBlock)) {
+        console.warn('Invalid range for getErrorBlocksInRange:', startBlock, endBlock);
+        return [];
+      }
+      
       const db = await this.dbPromise;
       const range = IDBKeyRange.bound(startBlock, endBlock);
       return await db.getAll(this.ERROR_STORE_NAME, range);
@@ -191,6 +254,12 @@ class BlockCache {
     }
     
     try {
+      // Validate blockNumber
+      if (blockNumber === undefined || blockNumber === null || isNaN(blockNumber)) {
+        console.warn('Attempted to get block with invalid blockNumber:', blockNumber);
+        return undefined;
+      }
+      
       const db = await this.dbPromise;
       return await db.get(this.STORE_NAME, blockNumber);
     } catch (error) {
@@ -208,6 +277,14 @@ class BlockCache {
     }
     
     try {
+      // Validate input
+      if (startBlock === undefined || endBlock === undefined || 
+          startBlock === null || endBlock === null ||
+          isNaN(startBlock) || isNaN(endBlock)) {
+        console.warn('Invalid range for getBlocksInRange:', startBlock, endBlock);
+        return [];
+      }
+      
       const db = await this.dbPromise;
       const range = IDBKeyRange.bound(startBlock, endBlock);
       return await db.getAll(this.STORE_NAME, range);
@@ -244,6 +321,14 @@ class BlockCache {
     }
     
     try {
+      // Validate input
+      if (startBlock === undefined || endBlock === undefined || 
+          startBlock === null || endBlock === null ||
+          isNaN(startBlock) || isNaN(endBlock)) {
+        console.warn('Invalid range for getCachedBlockNumbers:', startBlock, endBlock);
+        return [];
+      }
+      
       const db = await this.dbPromise;
       const range = IDBKeyRange.bound(startBlock, endBlock);
       const keys = await db.getAllKeys(this.STORE_NAME, range);

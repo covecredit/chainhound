@@ -28,7 +28,7 @@ const Footer = () => {
             </a>
             <a 
               href="mailto:info@hacker.house" 
-              className="text -gray-300 hover:text-white transition"
+              className="text-gray-300 hover:text-white transition"
             >
               <Mail className="h-5 w-5" />
             </a>
