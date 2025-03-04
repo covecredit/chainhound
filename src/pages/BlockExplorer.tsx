@@ -18,8 +18,6 @@ import { blockCache } from "../services/BlockCache";
 import { toPng } from "html-to-image";
 import { saveAs } from "file-saver";
 import { formatTimestamp } from "../utils/dateUtils";
-import { safelyConvertBigIntToString } from "../utils/bigIntUtils";
-// import type { Block as Web3Block } from "web3"; // Keeping but commented out as requested to not remove unused types
 
 interface SearchProgress {
   status: "idle" | "searching" | "completed" | "cancelled" | "error";
@@ -759,7 +757,8 @@ const BlockExplorer = () => {
               </div>
               {selectedNodeDetails.id && (
                 <button
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.preventDefault();
                     setSearchInput(selectedNodeDetails.id!);
                     handleSearch(selectedNodeDetails.id);
                   }}
@@ -785,7 +784,8 @@ const BlockExplorer = () => {
               </div>
               {selectedNodeDetails.hash && (
                 <button
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.preventDefault();
                     setSearchInput(selectedNodeDetails.hash!);
                     handleSearch(selectedNodeDetails.hash);
                   }}
@@ -835,7 +835,8 @@ const BlockExplorer = () => {
               </div>
               {selectedNodeDetails.blockNumber && (
                 <button
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.preventDefault();
                     const blockNumber =
                       selectedNodeDetails.blockNumber!.toString();
                     setSearchInput(blockNumber);
@@ -864,37 +865,27 @@ const BlockExplorer = () => {
     }
   };
 
-  const captureScreenshot = async (includeDetails: boolean = true) => {
+  const captureScreenshot = async (e: React.MouseEvent) => {
+    e.preventDefault();
     if (!graphRef.current) return;
 
     try {
-      const element = includeDetails
-        ? graphRef.current
-        : (graphRef.current.querySelector(".h-[500px]") as HTMLElement);
-      if (!element) return;
-
-      const dataUrl = await toPng(element);
-
-      // Create a link and trigger download
-      const link = document.createElement("a");
-      link.download = `chainhound-graph-${Date.now()}.png`;
-      link.href = dataUrl;
-      link.click();
+      const dataUrl = await toPng(graphRef.current);
+      const blob = await (await fetch(dataUrl)).blob();
+      saveAs(blob, `block-graph-${Date.now()}.png`);
     } catch (error) {
       console.error("Error capturing screenshot:", error);
     }
   };
 
-  const exportData = (format: "json") => {
+  const exportData = (e: React.MouseEvent) => {
+    e.preventDefault();
     if (!blockData) return;
 
-    try {
-      const jsonData = JSON.stringify(blockData, null, 2);
-      const blob = new Blob([jsonData], { type: "application/json" });
-      saveAs(blob, `chainhound_export_${format}_${Date.now()}.json`);
-    } catch (err) {
-      console.error("Error exporting data:", err);
-    }
+    const blob = new Blob([JSON.stringify(blockData, null, 2)], {
+      type: "application/json",
+    });
+    saveAs(blob, `block-data-${Date.now()}.json`);
   };
 
   const getSearchTypeIcon = (type: string) => {
@@ -934,7 +925,10 @@ const BlockExplorer = () => {
                 {searchInput && (
                   <button
                     className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
-                    onClick={() => setSearchInput("")}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setSearchInput("");
+                    }}
                   >
                     <X className="h-5 w-5" />
                   </button>
@@ -978,7 +972,10 @@ const BlockExplorer = () => {
                   <div
                     key={index}
                     className="p-2 text-sm cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 rounded-md flex items-center justify-between"
-                    onClick={() => handleSearchHistoryClick(search.query)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleSearchHistoryClick(search.query);
+                    }}
                   >
                     <div className="flex items-center overflow-hidden">
                       {getSearchTypeIcon(search.type)}
@@ -1144,76 +1141,64 @@ const BlockExplorer = () => {
         </div>
 
         {/* Main Content Area */}
-        <div className="flex flex-col flex-grow min-h-0 p-4 space-y-4">
-          {/* Block Graph */}
-          <div className="flex-grow min-h-0">
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 h-full overflow-auto">
-              {blockData && (
-                <div>
-                  <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-xl font-semibold">Block Graph</h2>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => captureScreenshot(false)}
-                        className="bg-gray-100 hover:bg-gray-200 text-gray-700 py-1 px-3 rounded flex items-center text-sm dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
-                      >
-                        <Camera className="h-4 w-4 mr-1" />
-                        <span>Capture</span>
-                      </button>
-                      <button
-                        onClick={() => exportData("json")}
-                        className="bg-gray-100 hover:bg-gray-200 text-gray-700 py-1 px-3 rounded flex items-center text-sm dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
-                      >
-                        <Download className="h-4 w-4 mr-1" />
-                        <span>Export JSON</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="relative" ref={graphRef}>
-                    <div className="h-[500px] border rounded-lg overflow-hidden dark:border-gray-600">
-                      <BlockGraph
-                        data={blockData}
-                        onNodeClick={handleNodeClick}
-                        onNodeDoubleClick={(node) => {
-                          if (
-                            node.type === "address" ||
-                            node.type === "contract"
-                          ) {
-                            setSearchInput(node.id);
-                            handleSearch(node.id);
-                          } else if (node.type === "transaction" && node.hash) {
-                            setSearchInput(node.hash);
-                            handleSearch(node.hash);
-                          } else if (
-                            node.type === "block" &&
-                            node.blockNumber
-                          ) {
-                            setSearchInput(node.blockNumber.toString());
-                            handleSearch(node.blockNumber.toString());
-                          }
-                        }}
-                      />
-                    </div>
-                  </div>
+        <div className="flex-grow min-h-0 p-4 flex flex-col space-y-4 overflow-auto">
+          {/* Graph Section */}
+          {blockData && (
+            <div className="flex flex-col space-y-4">
+              <div className="flex justify-between items-center">
+                <h2 className="text-lg font-medium">Block Graph</h2>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={captureScreenshot}
+                    className="flex items-center px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+                  >
+                    <Camera className="h-4 w-4 mr-1" />
+                    Capture
+                  </button>
+                  <button
+                    onClick={exportData}
+                    className="flex items-center px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+                  >
+                    <Download className="h-4 w-4 mr-1" />
+                    Export JSON
+                  </button>
                 </div>
-              )}
-            </div>
-          </div>
+              </div>
 
-          {/* Details Panel */}
-          <div className="min-h-0">
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 overflow-auto">
-              {/* Node Details Panel */}
-              {selectedNodeDetails && (
-                <div className="mb-4 p-4 border rounded-lg dark:border-gray-600 bg-white dark:bg-gray-800 shadow-lg">
-                  <h3 className="text-lg font-medium mb-2">Node Details</h3>
-                  <div className="space-y-2">{renderNodeDetails()}</div>
+              <div className="relative" ref={graphRef}>
+                <div className="h-[500px] border rounded-lg overflow-hidden dark:border-gray-600">
+                  <BlockGraph
+                    data={blockData}
+                    onNodeClick={handleNodeClick}
+                    onNodeDoubleClick={(node) => {
+                      if (node.type === "address" || node.type === "contract") {
+                        setSearchInput(node.id);
+                        handleSearch(node.id);
+                      } else if (node.type === "transaction" && node.hash) {
+                        setSearchInput(node.hash);
+                        handleSearch(node.hash);
+                      } else if (node.type === "block" && node.blockNumber) {
+                        setSearchInput(node.blockNumber.toString());
+                        handleSearch(node.blockNumber.toString());
+                      }
+                    }}
+                  />
                 </div>
-              )}
-              {/* ... existing block details content ... */}
+              </div>
+
+              {/* Details Panel - Now below the graph */}
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4">
+                {/* Node Details Panel */}
+                {selectedNodeDetails && (
+                  <div className="mb-4 p-4 border rounded-lg dark:border-gray-600 bg-white dark:bg-gray-800 shadow-lg">
+                    <h3 className="text-lg font-medium mb-2">Node Details</h3>
+                    <div className="space-y-2">{renderNodeDetails()}</div>
+                  </div>
+                )}
+                {/* ... existing block details content ... */}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>

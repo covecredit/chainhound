@@ -420,52 +420,59 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({
 
           const httpProvider = new Web3.providers.HttpProvider(secureUrl, {
             timeout: 30000,
-          });
+            withCredentials: false,
+            headers: [
+              {
+                name: "Content-Type",
+                value: "application/json",
+              },
+            ],
+          } as any);
 
-          // Add request interceptor for rate limiting and retries
+          // Override the send method to use XMLHttpRequest
           const originalSend = httpProvider.send.bind(httpProvider);
-          httpProvider.send = async function (payload, callback) {
+          httpProvider.send = function (
+            payload: any,
+            callback: (error: Error | null, result?: any) => void
+          ) {
+            const request = new XMLHttpRequest();
+            request.open("POST", secureUrl, true);
+            request.setRequestHeader("Content-Type", "application/json");
+
+            request.onreadystatechange = function () {
+              if (request.readyState === 4) {
+                try {
+                  if (request.status >= 200 && request.status < 300) {
+                    const response = JSON.parse(request.responseText);
+                    callback(null, response);
+                  } else {
+                    // Handle rate limiting
+                    if (request.status === 429) {
+                      setTimeout(() => {
+                        originalSend(payload, callback);
+                      }, 1000);
+                      return;
+                    }
+
+                    const error = new Error(
+                      `HTTP ${request.status}: ${request.statusText}`
+                    );
+                    callback(error);
+                  }
+                } catch (error) {
+                  callback(
+                    error instanceof Error ? error : new Error(String(error))
+                  );
+                }
+              }
+            };
+
             try {
-              // Add delay between requests to avoid rate limiting
-              await new Promise((resolve) => setTimeout(resolve, 100));
-
-              // Make the request directly using fetch with no-cors mode
-              const response = await fetch(secureUrl, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify(payload),
-                mode: "no-cors",
-                credentials: "omit",
-              });
-
-              // Since no-cors mode returns opaque response, we need to handle it differently
-              if (!response.ok && response.status !== 0) {
-                throw new Error(`HTTP ${response.status}`);
-              }
-
-              // Parse response if possible
-              let result;
-              try {
-                result = await response.json();
-              } catch (e) {
-                // With no-cors, we might not be able to read the response
-                // In this case, we'll need to fall back to another provider
-                throw new Error("Unable to parse response");
-              }
-
-              callback(null, result);
+              request.send(JSON.stringify(payload));
             } catch (error) {
-              // If rate limited, wait longer and retry
-              if (error instanceof Error && error.message.includes("429")) {
-                await new Promise((resolve) => setTimeout(resolve, 1000));
-                return await originalSend(payload, callback);
-              }
-
-              // For CORS or other errors, try alternative provider
-              logDebug("Provider error, will try alternative:", error);
-              callback(error, null);
+              callback(
+                error instanceof Error ? error : new Error(String(error))
+              );
             }
           };
 

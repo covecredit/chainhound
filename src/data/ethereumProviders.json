@@ -1,12 +1,12 @@
 [
   {
-    "name": "Cloudflare",
-    "url": "https://cloudflare-eth.com",
+    "name": "eth.drpc.org",
+    "url": "https://eth.drpc.org",
     "type": "https"
   },
   {
-    "name": "Infura",
-    "url": "https://mainnet.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161",
+    "name": "Cloudflare",
+    "url": "https://cloudflare-eth.com",
     "type": "https"
   },
   {
@@ -15,8 +15,18 @@
     "type": "https"
   },
   {
-    "name": "eth.drpc.org",
-    "url": "https://eth.drpc.org",
+    "name": "eth.merkle.io",
+    "url": "https://eth.merkle.io",
+    "type": "https"
+  },
+  {
+    "name": "Infura",
+    "url": "https://mainnet.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161",
+    "type": "https"
+  },
+  {
+    "name": "eth.meowrpc.com",
+    "url": "https://eth.meowrpc.com",
     "type": "https"
   },
   {
@@ -67,11 +77,6 @@
   {
     "name": "core.gashawk.io (HTTPS)",
     "url": "https://core.gashawk.io/rpc",
-    "network": "mainnet"
-  },
-  {
-    "name": "eth.meowrpc.com (HTTPS)",
-    "url": "https://eth.meowrpc.com",
     "network": "mainnet"
   },
   {
@@ -127,11 +132,6 @@
   {
     "name": "gateway.tenderly.co/public/mainnet (HTTPS)",
     "url": "https://gateway.tenderly.co/public/mainnet",
-    "network": "mainnet"
-  },
-  {
-    "name": "eth.merkle.io (HTTPS)",
-    "url": "https://eth.merkle.io",
     "network": "mainnet"
   },
   {
