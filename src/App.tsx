@@ -14,23 +14,17 @@ const App: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  // Apply dark mode on initial load
   useEffect(() => {
     const savedDarkMode = localStorage.getItem("chainhound_dark_mode");
-    const prefersDark = window.matchMedia(
-      "(prefers-color-scheme: dark)"
-    ).matches;
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
 
-    // Default to dark mode if not set or if system prefers dark
     if (savedDarkMode === null || savedDarkMode === "true" || prefersDark) {
       document.documentElement.classList.add("dark");
     } else {
       document.documentElement.classList.remove("dark");
     }
 
-    // Force reload if coming from cache
     if (performance.navigation.type === 1) {
-      // This is a page refresh, clear any cache headers
       const meta = document.createElement("meta");
       meta.httpEquiv = "Cache-Control";
       meta.content = "no-cache, no-store, must-revalidate";
@@ -47,10 +41,7 @@ const App: React.FC = () => {
       document.head.appendChild(expires);
     }
 
-    // Load sidebar state from localStorage
-    const savedSidebarState = localStorage.getItem(
-      "chainhound_sidebar_collapsed"
-    );
+    const savedSidebarState = localStorage.getItem("chainhound_sidebar_collapsed");
     if (savedSidebarState !== null) {
       setSidebarCollapsed(savedSidebarState === "true");
     }
@@ -70,8 +61,8 @@ const App: React.FC = () => {
     <Web3Provider>
       <Router>
         <div className="min-h-screen bg-gray-50 flex flex-col dark:bg-gray-900">
-          <header className="bg-indigo-700 text-white shadow-md dark:bg-indigo-900">
-            <div className="container mx-auto px-4 py-3 flex items-center justify-between">
+          <header className="bg-indigo-700 text-white shadow-md dark:bg-indigo-900 w-full">
+            <div className="container mx-auto px-4 py-3 flex items-center justify-between max-w-full">
               <div className="flex items-center space-x-2">
                 <div className="relative">
                   <Search className="h-8 w-8" />
@@ -99,8 +90,7 @@ const App: React.FC = () => {
             </div>
           </header>
 
-          <div className="flex flex-1">
-            {/* Mobile menu overlay */}
+          <div className="flex flex-1 w-full">
             {mobileMenuOpen && (
               <div
                 className="fixed inset-0 z-20 bg-black bg-opacity-50 md:hidden"
@@ -108,7 +98,6 @@ const App: React.FC = () => {
               ></div>
             )}
 
-            {/* Sidebar */}
             <div
               className={`${
                 mobileMenuOpen ? "block" : "hidden"
@@ -153,14 +142,16 @@ const App: React.FC = () => {
               )}
             </div>
 
-            <main className="flex-1 p-4 overflow-auto w-full">
-              <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/blocks" element={<BlockExplorer />} />
-                <Route path="/transactions" element={<BlockExplorer />} />
-                <Route path="/cases" element={<CaseManager />} />
-                <Route path="/settings" element={<Settings />} />
-              </Routes>
+            <main className="flex-1 p-4 overflow-auto w-full max-w-full">
+              <div className="container mx-auto max-w-full">
+                <Routes>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/blocks" element={<BlockExplorer />} />
+                  <Route path="/transactions" element={<BlockExplorer />} />
+                  <Route path="/cases" element={<CaseManager />} />
+                  <Route path="/settings" element={<Settings />} />
+                </Routes>
+              </div>
             </main>
           </div>
 

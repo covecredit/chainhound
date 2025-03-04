@@ -14,8 +14,9 @@ class BlockCache {
   private readonly DB_NAME = 'chainhound-block-cache';
   private readonly STORE_NAME = 'blocks';
   private readonly ERROR_STORE_NAME = 'error-blocks';
-  private readonly VERSION = 2;
+  private readonly VERSION = 4; // Increment version for new indices
   private isInitialized = false;
+  private lastProcessedBlock: number | null = null;
 
   constructor() {
     this.dbPromise = this.initDB();
@@ -25,23 +26,29 @@ class BlockCache {
     try {
       const db = await openDB(this.DB_NAME, this.VERSION, {
         upgrade(db, oldVersion, newVersion) {
-          // Create blocks store if it doesn't exist
-          if (!db.objectStoreNames.contains('blocks')) {
-            const store = db.createObjectStore('blocks', {
-              keyPath: 'number'
-            });
-            // Create an index on the timestamp
-            store.createIndex('timestamp', 'timestamp');
+          // Delete old stores to ensure clean upgrade
+          if (db.objectStoreNames.contains('blocks')) {
+            db.deleteObjectStore('blocks');
+          }
+          if (db.objectStoreNames.contains('error-blocks')) {
+            db.deleteObjectStore('error-blocks');
           }
           
-          // Create error-blocks store if it doesn't exist (added in version 2)
-          if (!db.objectStoreNames.contains('error-blocks') && oldVersion < 2) {
-            const errorStore = db.createObjectStore('error-blocks', {
-              keyPath: 'blockNumber'
-            });
-            errorStore.createIndex('timestamp', 'timestamp');
-            errorStore.createIndex('errorType', 'errorType');
-          }
+          // Create blocks store with proper indices
+          const blockStore = db.createObjectStore('blocks', {
+            keyPath: 'number'
+          });
+          blockStore.createIndex('number', 'number', { unique: true });
+          blockStore.createIndex('timestamp', 'timestamp');
+          blockStore.createIndex('hash', 'hash', { unique: true });
+          
+          // Create error-blocks store
+          const errorStore = db.createObjectStore('error-blocks', {
+            keyPath: 'blockNumber'
+          });
+          errorStore.createIndex('blockNumber', 'blockNumber', { unique: true });
+          errorStore.createIndex('timestamp', 'timestamp');
+          errorStore.createIndex('errorType', 'errorType');
         }
       });
       this.isInitialized = true;
@@ -61,26 +68,42 @@ class BlockCache {
     }
     
     try {
-      // Validate block has a number property
-      if (block.number === undefined || block.number === null) {
-        console.warn('Attempted to cache block without a valid number property');
+      if (!block || block.number === undefined || block.number === null) {
+        console.warn('Attempted to cache invalid block:', block);
         return;
       }
       
-      // Convert any BigInt values to strings before storing
       const safeBlock = safelyConvertBigIntToString(block);
       
       const db = await this.dbPromise;
-      await db.put(this.STORE_NAME, safeBlock);
+      const tx = db.transaction(this.STORE_NAME, 'readwrite');
       
-      // If this block was previously in the error store, remove it
-      try {
-        await this.removeErrorBlock(block.number);
-      } catch (e) {
-        // Silently ignore errors if the block wasn't in the error store
+      // Check if block already exists and is newer
+      const existingBlock = await tx.store.get(block.number);
+      if (existingBlock) {
+        // Only update if the new block has more data
+        if (JSON.stringify(existingBlock).length >= JSON.stringify(safeBlock).length) {
+          console.log(`Block ${block.number} already cached with equal or more data, skipping...`);
+          return;
+        }
+        console.log(`Updating cached block ${block.number} with new data...`);
       }
+      
+      await tx.store.put(safeBlock);
+      await tx.done;
+      
+      // Update last processed block if this is the highest we've seen
+      if (this.lastProcessedBlock === null || block.number > this.lastProcessedBlock) {
+        this.lastProcessedBlock = block.number;
+      }
+      
+      // Remove from error store if it exists
+      await this.removeErrorBlock(block.number);
+      
+      console.log(`Cached block ${block.number}`);
     } catch (error) {
       console.error('Failed to cache block:', error);
+      throw error;
     }
   }
 
@@ -93,37 +116,160 @@ class BlockCache {
     }
     
     try {
+      const validBlocks = blocks.filter(block => 
+        block && block.number !== undefined && block.number !== null
+      );
+      
+      if (validBlocks.length === 0) {
+        console.warn('No valid blocks to cache');
+        return;
+      }
+      
       const db = await this.dbPromise;
       const tx = db.transaction(this.STORE_NAME, 'readwrite');
       
-      const validBlocks = blocks.filter(block => 
-        block.number !== undefined && block.number !== null
+      // Process blocks in batches to avoid memory issues
+      const batchSize = 100;
+      for (let i = 0; i < validBlocks.length; i += batchSize) {
+        const batch = validBlocks.slice(i, i + batchSize);
+        await Promise.all(
+          batch.map(block => {
+            const safeBlock = safelyConvertBigIntToString(block);
+            return tx.store.put(safeBlock);
+          })
+        );
+      }
+      
+      await tx.done;
+      
+      // Remove from error store
+      await Promise.all(
+        validBlocks.map(block => this.removeErrorBlock(block.number))
       );
       
-      if (validBlocks.length !== blocks.length) {
-        console.warn(`Filtered out ${blocks.length - validBlocks.length} blocks with invalid number property`);
-      }
-      
-      await Promise.all([
-        ...validBlocks.map(block => {
-          // Convert any BigInt values to strings before storing
-          const safeBlock = safelyConvertBigIntToString(block);
-          return tx.store.put(safeBlock);
-        }),
-        tx.done
-      ]);
-      
-      // Remove these blocks from the error store if they exist
-      for (const block of validBlocks) {
-        try {
-          await this.removeErrorBlock(block.number);
-        } catch (e) {
-          // Silently ignore errors if the block wasn't in the error store
-        }
-      }
+      console.log(`Cached ${validBlocks.length} blocks`);
     } catch (error) {
       console.error('Failed to cache blocks:', error);
+      throw error;
     }
+  }
+
+  /**
+   * Get cached block numbers in a range
+   */
+  async getCachedBlockNumbers(startBlock: number, endBlock: number): Promise<number[]> {
+    if (!this.isInitialized) {
+      await this.dbPromise;
+    }
+    
+    try {
+      if (startBlock === undefined || endBlock === undefined || 
+          startBlock === null || endBlock === null ||
+          isNaN(startBlock) || isNaN(endBlock)) {
+        console.warn('Invalid block range:', startBlock, endBlock);
+        return [];
+      }
+      
+      const db = await this.dbPromise;
+      const tx = db.transaction(this.STORE_NAME, 'readonly');
+      const index = tx.store.index('number');
+      const range = IDBKeyRange.bound(startBlock, endBlock);
+      
+      // Get all block numbers in range
+      const blockNumbers: number[] = [];
+      let cursor = await index.openCursor(range);
+      
+      while (cursor) {
+        blockNumbers.push(cursor.value.number);
+        cursor = await cursor.continue();
+      }
+      
+      // Sort block numbers
+      blockNumbers.sort((a, b) => a - b);
+      
+      console.log(`Found ${blockNumbers.length} cached blocks in range ${startBlock}-${endBlock}`);
+      
+      return blockNumbers;
+    } catch (error) {
+      console.error('Failed to get cached block numbers:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get a block from the cache
+   */
+  async getBlock(blockNumber: number): Promise<Block | undefined> {
+    if (!this.isInitialized) {
+      await this.dbPromise;
+    }
+    
+    try {
+      if (blockNumber === undefined || blockNumber === null || isNaN(blockNumber)) {
+        console.warn('Invalid block number:', blockNumber);
+        return undefined;
+      }
+      
+      const db = await this.dbPromise;
+      const tx = db.transaction(this.STORE_NAME, 'readonly');
+      const block = await tx.store.get(blockNumber);
+      
+      if (block) {
+        console.log(`Retrieved block ${blockNumber} from cache`);
+      }
+      
+      return block;
+    } catch (error) {
+      console.error('Failed to get block from cache:', error);
+      return undefined;
+    }
+  }
+
+  /**
+   * Get blocks in a range
+   */
+  async getBlocksInRange(startBlock: number, endBlock: number): Promise<Block[]> {
+    if (!this.isInitialized) {
+      await this.dbPromise;
+    }
+    
+    try {
+      if (startBlock === undefined || endBlock === undefined || 
+          startBlock === null || endBlock === null ||
+          isNaN(startBlock) || isNaN(endBlock)) {
+        console.warn('Invalid block range:', startBlock, endBlock);
+        return [];
+      }
+      
+      const db = await this.dbPromise;
+      const tx = db.transaction(this.STORE_NAME, 'readonly');
+      const index = tx.store.index('number');
+      const range = IDBKeyRange.bound(startBlock, endBlock);
+      
+      const blocks = await index.getAll(range);
+      
+      // Sort blocks by number
+      blocks.sort((a, b) => a.number - b.number);
+      
+      console.log(`Retrieved ${blocks.length} blocks from cache in range ${startBlock}-${endBlock}`);
+      
+      return blocks;
+    } catch (error) {
+      console.error('Failed to get blocks from cache:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get the next block range to fetch
+   * Returns [startBlock, endBlock] tuple
+   */
+  async getNextBlockRange(currentBlock: number, maxBlocks: number): Promise<[number, number]> {
+    // If we have a last processed block, start from there
+    const startBlock = this.lastProcessedBlock ? this.lastProcessedBlock + 1 : currentBlock - maxBlocks;
+    const endBlock = startBlock + maxBlocks - 1;
+    
+    return [startBlock, endBlock];
   }
 
   /**
@@ -135,22 +281,53 @@ class BlockCache {
     }
     
     try {
-      // Validate blockNumber
       if (blockNumber === undefined || blockNumber === null || isNaN(blockNumber)) {
-        console.warn('Attempted to record error block with invalid blockNumber:', blockNumber);
+        console.warn('Invalid block number for error record:', blockNumber);
         return;
       }
       
       const db = await this.dbPromise;
-      await db.put(this.ERROR_STORE_NAME, {
+      const tx = db.transaction(this.ERROR_STORE_NAME, 'readwrite');
+      await tx.store.put({
         blockNumber,
         errorType,
         errorMessage,
         timestamp: Date.now(),
         retryCount: 0
       });
+      await tx.done;
+      
+      console.log(`Recorded error for block ${blockNumber}: ${errorType}`);
     } catch (error) {
       console.error('Failed to record error block:', error);
+    }
+  }
+
+  /**
+   * Get error blocks in a range
+   */
+  async getErrorBlocksInRange(startBlock: number, endBlock: number): Promise<any[]> {
+    if (!this.isInitialized) {
+      await this.dbPromise;
+    }
+    
+    try {
+      if (startBlock === undefined || endBlock === undefined || 
+          startBlock === null || endBlock === null ||
+          isNaN(startBlock) || isNaN(endBlock)) {
+        console.warn('Invalid block range for error blocks:', startBlock, endBlock);
+        return [];
+      }
+      
+      const db = await this.dbPromise;
+      const range = IDBKeyRange.bound(startBlock, endBlock);
+      const errorBlocks = await db.getAll(this.ERROR_STORE_NAME, range);
+      
+      console.log(`Found ${errorBlocks.length} error blocks in range ${startBlock}-${endBlock}`);
+      return errorBlocks;
+    } catch (error) {
+      console.error('Failed to get error blocks:', error);
+      return [];
     }
   }
 
@@ -164,90 +341,15 @@ class BlockCache {
     
     try {
       if (blockNumber === undefined || blockNumber === null || isNaN(blockNumber)) {
-        // Just return silently instead of warning to avoid console spam
         return;
       }
       
       const db = await this.dbPromise;
-      
-      // Check if the error block exists before trying to delete it
-      try {
-        const errorBlock = await db.get(this.ERROR_STORE_NAME, blockNumber);
-        if (errorBlock) {
-          await db.delete(this.ERROR_STORE_NAME, blockNumber);
-        }
-      } catch (getError) {
-        // If there's an error getting the block, don't try to delete it
-        // This prevents the "Failed to remove error block" errors
-        return;
-      }
+      const tx = db.transaction(this.ERROR_STORE_NAME, 'readwrite');
+      await tx.store.delete(blockNumber);
+      await tx.done;
     } catch (error) {
-      // Silently handle errors to prevent console spam
-      // This is a non-critical operation
-    }
-  }
-
-  /**
-   * Get a specific error block by block number
-   */
-  async getErrorBlock(blockNumber: number): Promise<any | undefined> {
-    if (!this.isInitialized) {
-      await this.dbPromise;
-    }
-    
-    try {
-      if (blockNumber === undefined || blockNumber === null || isNaN(blockNumber)) {
-        return undefined;
-      }
-      
-      const db = await this.dbPromise;
-      return await db.get(this.ERROR_STORE_NAME, blockNumber);
-    } catch (error) {
-      console.error('Failed to get error block:', error);
-      return undefined;
-    }
-  }
-
-  /**
-   * Get all error blocks
-   */
-  async getErrorBlocks(): Promise<any[]> {
-    if (!this.isInitialized) {
-      await this.dbPromise;
-    }
-    
-    try {
-      const db = await this.dbPromise;
-      return await db.getAll(this.ERROR_STORE_NAME);
-    } catch (error) {
-      console.error('Failed to get error blocks:', error);
-      return [];
-    }
-  }
-
-  /**
-   * Get error blocks in a specific range
-   */
-  async getErrorBlocksInRange(startBlock: number, endBlock: number): Promise<any[]> {
-    if (!this.isInitialized) {
-      await this.dbPromise;
-    }
-    
-    try {
-      // Validate input
-      if (startBlock === undefined || endBlock === undefined || 
-          startBlock === null || endBlock === null ||
-          isNaN(startBlock) || isNaN(endBlock)) {
-        console.warn('Invalid range for getErrorBlocksInRange:', startBlock, endBlock);
-        return [];
-      }
-      
-      const db = await this.dbPromise;
-      const range = IDBKeyRange.bound(startBlock, endBlock);
-      return await db.getAll(this.ERROR_STORE_NAME, range);
-    } catch (error) {
-      console.error('Failed to get error blocks in range:', error);
-      return [];
+      // Silently handle errors for this non-critical operation
     }
   }
 
@@ -261,153 +363,40 @@ class BlockCache {
     
     try {
       const db = await this.dbPromise;
-      await db.clear(this.ERROR_STORE_NAME);
+      const tx = db.transaction(this.ERROR_STORE_NAME, 'readwrite');
+      await tx.store.clear();
+      await tx.done;
+      console.log('Cleared all error blocks');
     } catch (error) {
       console.error('Failed to clear error blocks:', error);
+      throw error;
     }
   }
 
   /**
-   * Get a block from the cache by block number
+   * Clear the entire cache
    */
-  async getBlock(blockNumber: number): Promise<Block | undefined> {
+  async clearCache(): Promise<void> {
     if (!this.isInitialized) {
       await this.dbPromise;
     }
     
     try {
-      // Validate blockNumber
-      if (blockNumber === undefined || blockNumber === null || isNaN(blockNumber)) {
-        console.warn('Attempted to get block with invalid blockNumber:', blockNumber);
-        return undefined;
-      }
+      const db = await this.dbPromise;
+      const tx1 = db.transaction(this.STORE_NAME, 'readwrite');
+      const tx2 = db.transaction(this.ERROR_STORE_NAME, 'readwrite');
       
-      const db = await this.dbPromise;
-      return await db.get(this.STORE_NAME, blockNumber);
-    } catch (error) {
-      console.error('Failed to get block from cache:', error);
-      return undefined;
-    }
-  }
-
-  /**
-   * Get multiple blocks from the cache by block number range
-   */
-  async getBlocksInRange(startBlock: number, endBlock: number): Promise<Block[]> {
-    if (!this.isInitialized) {
-      await this.dbPromise;
-    }
-    
-    try {
-      // Validate input
-      if (startBlock === undefined || endBlock === undefined || 
-          startBlock === null || endBlock === null ||
-          isNaN(startBlock) || isNaN(endBlock)) {
-        console.warn('Invalid range for getBlocksInRange:', startBlock, endBlock);
-        return [];
-      }
+      await Promise.all([
+        tx1.store.clear(),
+        tx2.store.clear(),
+        tx1.done,
+        tx2.done
+      ]);
       
-      const db = await this.dbPromise;
-      const range = IDBKeyRange.bound(startBlock, endBlock);
-      return await db.getAll(this.STORE_NAME, range);
+      console.log('Cleared entire cache');
     } catch (error) {
-      console.error('Failed to get blocks from cache:', error);
-      return [];
-    }
-  }
-
-  /**
-   * Get all blocks from the cache
-   */
-  async getAllBlocks(): Promise<Block[]> {
-    if (!this.isInitialized) {
-      await this.dbPromise;
-    }
-    
-    try {
-      const db = await this.dbPromise;
-      return await db.getAll(this.STORE_NAME);
-    } catch (error) {
-      console.error('Failed to get all blocks from cache:', error);
-      return [];
-    }
-  }
-
-  /**
-   * Check which blocks in a range are already cached
-   * Returns an array of block numbers that are cached
-   */
-  async getCachedBlockNumbers(startBlock: number, endBlock: number): Promise<number[]> {
-    if (!this.isInitialized) {
-      await this.dbPromise;
-    }
-    
-    try {
-      // Validate input
-      if (startBlock === undefined || endBlock === undefined || 
-          startBlock === null || endBlock === null ||
-          isNaN(startBlock) || isNaN(endBlock)) {
-        console.warn('Invalid range for getCachedBlockNumbers:', startBlock, endBlock);
-        return [];
-      }
-      
-      const db = await this.dbPromise;
-      const range = IDBKeyRange.bound(startBlock, endBlock);
-      const keys = await db.getAllKeys(this.STORE_NAME, range);
-      return keys as number[];
-    } catch (error) {
-      console.error('Failed to get cached block numbers:', error);
-      return [];
-    }
-  }
-
-  /**
-   * Get the highest block number in the cache
-   */
-  async getHighestBlockNumber(): Promise<number | undefined> {
-    if (!this.isInitialized) {
-      await this.dbPromise;
-    }
-    
-    try {
-      const db = await this.dbPromise;
-      // Open a cursor to the blocks store, sorted in descending order
-      const cursor = await db.transaction(this.STORE_NAME)
-        .store.openCursor(null, 'prev');
-      
-      // The first record will be the highest block number
-      if (cursor) {
-        return cursor.key as number;
-      }
-      return undefined;
-    } catch (error) {
-      console.error('Failed to get highest block number:', error);
-      return undefined;
-    }
-  }
-
-  /**
-   * Get the lowest block number in the cache
-   */
-  async getLowestBlockNumber(): Promise<number | undefined> {
-    if (!this.isInitialized) {
-      await this.dbPromise;
-    }
-    
-    try {
-      const db = await this.dbPromise;
-      // Open a cursor to the blocks store, sorted in ascending order
-      const cursor = await db.transaction(this.STORE_NAME)
-        .store.openCursor();
-      
-      // The first record will be the lowest block number
-      if (cursor) {
-        return cursor.key as number;
-      }
-      return undefined;
-    } catch (error) {
-      console.error('Failed to get lowest block number:', error);
-      return undefined;
+      console.error('Failed to clear cache:', error);
+      throw error;
     }
   }
 
@@ -429,41 +418,36 @@ class BlockCache {
     
     try {
       const db = await this.dbPromise;
-      const count = await db.count(this.STORE_NAME);
-      const lowest = await this.getLowestBlockNumber();
-      const highest = await this.getHighestBlockNumber();
-      const errorCount = await db.count(this.ERROR_STORE_NAME);
+      const tx = db.transaction([this.STORE_NAME, this.ERROR_STORE_NAME], 'readonly');
       
-      // Get timestamps for oldest and newest blocks
-      let oldestTimestamp: Date | undefined;
-      let newestTimestamp: Date | undefined;
+      const [blockCount, errorCount] = await Promise.all([
+        tx.objectStore(this.STORE_NAME).count(),
+        tx.objectStore(this.ERROR_STORE_NAME).count()
+      ]);
       
-      if (lowest !== undefined) {
-        const oldestBlock = await this.getBlock(lowest);
-        if (oldestBlock && oldestBlock.timestamp) {
-          oldestTimestamp = new Date(oldestBlock.timestamp * 1000); // Convert from Unix timestamp
-        }
-      }
+      // Get block range
+      const blockStore = tx.objectStore(this.STORE_NAME);
+      const [firstCursor, lastCursor] = await Promise.all([
+        blockStore.openCursor(),
+        blockStore.openCursor(null, 'prev')
+      ]);
       
-      if (highest !== undefined) {
-        const newestBlock = await this.getBlock(highest);
-        if (newestBlock && newestBlock.timestamp) {
-          newestTimestamp = new Date(newestBlock.timestamp * 1000); // Convert from Unix timestamp
-        }
-      }
+      const oldestBlock = firstCursor?.value;
+      const newestBlock = lastCursor?.value;
       
-      // Estimate size (very rough approximation)
-      // Assuming average block size of 50KB
-      const sizeInBytes = count * 50 * 1024;
+      // Estimate size (rough approximation)
+      const sizeInBytes = blockCount * 50 * 1024; // Assume 50KB per block
       const sizeEstimate = this.formatBytes(sizeInBytes);
       
+      await tx.done;
+      
       return {
-        totalBlocks: count,
-        oldestBlock: lowest,
-        newestBlock: highest,
+        totalBlocks: blockCount,
+        oldestBlock: oldestBlock?.number,
+        newestBlock: newestBlock?.number,
         sizeEstimate,
-        oldestTimestamp,
-        newestTimestamp,
+        oldestTimestamp: oldestBlock?.timestamp ? new Date(oldestBlock.timestamp * 1000) : undefined,
+        newestTimestamp: newestBlock?.timestamp ? new Date(newestBlock.timestamp * 1000) : undefined,
         errorBlocks: errorCount
       };
     } catch (error) {
@@ -477,68 +461,16 @@ class BlockCache {
   }
 
   /**
-   * Clear the entire cache
-   */
-  async clearCache(): Promise<void> {
-    if (!this.isInitialized) {
-      await this.dbPromise;
-    }
-    
-    try {
-      const db = await this.dbPromise;
-      await db.clear(this.STORE_NAME);
-      await db.clear(this.ERROR_STORE_NAME);
-    } catch (error) {
-      console.error('Failed to clear cache:', error);
-    }
-  }
-
-  /**
-   * Clear blocks older than a certain timestamp
-   */
-  async clearOldBlocks(olderThanTimestamp: number): Promise<void> {
-    if (!this.isInitialized) {
-      await this.dbPromise;
-    }
-    
-    try {
-      const db = await this.dbPromise;
-      const tx = db.transaction(this.STORE_NAME, 'readwrite');
-      const index = tx.store.index('timestamp');
-      const range = IDBKeyRange.upperBound(olderThanTimestamp);
-      
-      let cursor = await index.openCursor(range);
-      while (cursor) {
-        await cursor.delete();
-        cursor = await cursor.continue();
-      }
-      
-      await tx.done;
-    } catch (error) {
-      console.error('Failed to clear old blocks:', error);
-    }
-  }
-
-  /**
-   * Format bytes to a human-readable string
+   * Format bytes to human readable string
    */
   private formatBytes(bytes: number): string {
     if (bytes === 0) return '0 B';
-    
     const k = 1024;
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  }
-
-  /**
-   * Convert BigInt values in an object to strings
-   */
-  private convertBigIntToString(obj: any): any {
-    return safelyConvertBigIntToString(obj);
   }
 }
 
-// Export a singleton instance
+// Export singleton instance
 export const blockCache = new BlockCache();
