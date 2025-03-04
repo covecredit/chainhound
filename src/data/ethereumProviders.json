@@ -1,38 +1,38 @@
 [
   {
-    "name": "eth.drpc.org (HTTPS)",
-    "url": "https://eth.drpc.org",
-    "network": "mainnet"
-  },
-  {
-    "name": "rpc.ankr.com/eth (HTTPS)",
-    "url": "https://rpc.ankr.com/eth",
-    "network": "mainnet"
-  },
-  {
-    "name": "cloudflare-eth.com (HTTPS)",
+    "name": "Cloudflare",
     "url": "https://cloudflare-eth.com",
-    "network": "mainnet"
+    "type": "https"
   },
   {
-    "name": "eth.llamarpc.com (HTTPS)",
-    "url": "https://eth.llamarpc.com",
-    "network": "mainnet"
+    "name": "Infura",
+    "url": "https://mainnet.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161",
+    "type": "https"
   },
   {
-    "name": "ethereum-rpc.publicnode.com (HTTPS)",
-    "url": "https://ethereum-rpc.publicnode.com",
-    "network": "mainnet"
+    "name": "Public Node",
+    "url": "https://ethereum.publicnode.com",
+    "type": "https"
   },
   {
-    "name": "1rpc.io/eth (HTTPS)",
+    "name": "eth.drpc.org",
+    "url": "https://eth.drpc.org",
+    "type": "https"
+  },
+  {
+    "name": "Ankr",
+    "url": "https://rpc.ankr.com/eth",
+    "type": "https"
+  },
+  {
+    "name": "1RPC",
     "url": "https://1rpc.io/eth",
-    "network": "mainnet"
+    "type": "https"
   },
   {
-    "name": "eth-mainnet.public.blastapi.io (HTTPS)",
-    "url": "https://eth-mainnet.public.blastapi.io",
-    "network": "mainnet"
+    "name": "LlamaNodes",
+    "url": "https://eth.llamarpc.com",
+    "type": "https"
   },
   {
     "name": "ethereum.blockpi.network (HTTPS)",
