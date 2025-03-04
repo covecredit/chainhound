@@ -956,3 +956,5 @@ const BlockExplorer = () => {
 };
 
 export default BlockExplorer;
+
+export default BlockExplorer
