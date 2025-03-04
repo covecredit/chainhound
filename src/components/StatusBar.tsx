@@ -32,17 +32,16 @@ const StatusBar = () => {
   }, []);
   
   useEffect(() => {
-    // Load cache stats on initial load and every 30 seconds
     loadCacheStats();
-    const statsTimer = setInterval(loadCacheStats, 30000);
-    
-    return () => clearInterval(statsTimer);
   }, []);
   
   const loadCacheStats = async () => {
     try {
       const stats = await blockCache.getCacheStats();
       setCacheStats(stats);
+      
+      // Update stats every 30 seconds
+      setTimeout(loadCacheStats, 30000);
     } catch (error) {
       console.error('Failed to load cache stats:', error);
     }

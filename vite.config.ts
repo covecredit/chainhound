@@ -26,8 +26,27 @@ export default defineConfig({
     },
   },
   server: {
-    historyApiFallback: true,
+    host: '0.0.0.0',
     port: 3000,
-    open: true,
+    open: false,
+    hmr: {
+      host: '0.0.0.0',
+      protocol: 'ws'
+    },
+    headers: {
+      'Content-Type': 'application/javascript',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Access-Control-Allow-Origin': '*'
+    }
   },
+  preview: {
+    host: '0.0.0.0',
+    port: 3000,
+    open: false,
+    headers: {
+      'Content-Type': 'application/javascript',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Access-Control-Allow-Origin': '*'
+    }
+  }
 });

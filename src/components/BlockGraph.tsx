@@ -50,7 +50,7 @@ const BlockGraph: React.FC<BlockGraphProps> = ({ data, onNodeClick, onNodeDouble
       d3.select(svgRef.current).selectAll('*').remove();
       setErrorMessage(null);
       
-      // Process data into graph format - ensure we're working with a safe copy (no BigInt values)
+      // Process data into graph format
       const safeData = safelyConvertBigIntToString(data);
       const graphData = processDataToGraph(safeData);
       
@@ -59,10 +59,15 @@ const BlockGraph: React.FC<BlockGraphProps> = ({ data, onNodeClick, onNodeDouble
         return;
       }
       
-      // Set up the SVG
+      // Set up the SVG with full width
       const svg = d3.select(svgRef.current);
       const width = containerRef.current.clientWidth;
-      const height = containerRef.current.clientHeight || 500; // Default height if not set
+      const height = containerRef.current.clientHeight || 600;
+      
+      svg
+        .attr('width', '100%')
+        .attr('height', height)
+        .attr('viewBox', `0 0 ${width} ${height}`);
       
       // Check if dark mode is enabled
       const isDarkMode = document.documentElement.classList.contains('dark');
@@ -713,13 +718,4 @@ const BlockGraph: React.FC<BlockGraphProps> = ({ data, onNodeClick, onNodeDouble
     <div ref={containerRef} className="w-full h-full relative">
       {errorMessage && (
         <div className="absolute top-4 left-4 right-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded flex items-center dark:bg-red-900/50 dark:border-red-800 dark:text-red-300">
-          <AlertTriangle className="inline-block mr-2" size={16} />
-          {errorMessage}
-        </div>
-      )}
-      <svg ref={svgRef} className="w-full h-full" />
-    </div>
-  );
-};
-
-export default BlockGraph;
+          <AlertTriangle className="inline-block mr-2" size
