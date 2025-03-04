@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import * as d3 from 'd3';
 import { Wallet, Cog, Box, ArrowRight, Cuboid as Cube, AlertTriangle } from 'lucide-react';
 import { formatWeiToEth, safelyConvertBigIntToString } from '../utils/bigIntUtils';
-import TransactionLegend from './TransactionLegend';
+import BlockLegend from './BlockLegend';
 
 interface Node {
   id: string;
@@ -30,13 +30,13 @@ interface GraphData {
   links: Link[];
 }
 
-interface TransactionGraphProps {
+interface BlockGraphProps {
   data: any;
   onNodeClick?: (node: Node) => void;
   onNodeDoubleClick?: (node: Node) => void;
 }
 
-const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick, onNodeDoubleClick }) => {
+const BlockGraph: React.FC<BlockGraphProps> = ({ data, onNodeClick, onNodeDoubleClick }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -72,7 +72,7 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick, 
         address: '#4f46e5', // indigo
         contract: '#0891b2', // cyan
         transaction: '#f59e0b', // amber
-        block: '#3b82f6', // blue (changed from emerald to blue)
+        block: '#3b82f6', // blue
       };
       
       const roleColors = {
@@ -81,7 +81,7 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick, 
       };
       
       const linkColors = {
-        send: '#ef4444', // red
+        send: '#9333ea', // purple (changed from red to purple to differentiate from address)
         receive: '#10b981', // emerald
         interact: '#8b5cf6', // violet
       };
@@ -234,7 +234,7 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick, 
           }
         });
       
-      // Add labels to nodes
+      // Add labels to nodes - NEVER SHORTEN ADDRESSES
       node.append('text')
         .attr('dy', 30)
         .attr('text-anchor', 'middle')
@@ -243,21 +243,30 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick, 
         .attr('cursor', 'pointer')
         .text((d: any) => {
           if (d.type === 'address' || d.type === 'contract') {
+            // Display full address - never shorten for security reasons
             return d.id;
           } else if (d.type === 'transaction') {
-            return d.hash ? d.hash : 'TX';
+            // For transactions, we can show a shortened hash with clear indication
+            return d.hash ? `TX: ${d.hash.substring(0, 10)}...` : 'TX';
           } else if (d.type === 'block') {
-            return `Block #${d.blockNumber}`;
+            // Include full timestamp in block label
+            const blockLabel = `Block #${d.blockNumber}`;
+            if (d.timestamp) {
+              const date = new Date(d.timestamp * 1000);
+              return `${blockLabel} (${date.toLocaleString()})`;
+            }
+            return blockLabel;
           }
           return '';
         });
       
-      // Add gas info to links
+      // Add gas info only to transaction-block links (not from sender to transaction)
       link.each(function(d: any) {
-        if (d.gas || d.gasPrice) {
-          const linkElement = d3.select(this);
-          const linkData = linkElement.datum() as any;
-          
+        const linkElement = d3.select(this);
+        const linkData = linkElement.datum() as any;
+        
+        // Check if this is a transaction-block link (type interact)
+        if (linkData.type === 'interact' && (linkData.gas || linkData.gasPrice)) {
           // Add gas info as text along the link
           container.append('text')
             .attr('class', 'link-label')
@@ -479,6 +488,27 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick, 
               data: tx
             });
             
+            // Add block node if available
+            if (tx.blockNumber) {
+              const blockId = `block-${tx.blockNumber}`;
+              addNode(blockId, 'block', { 
+                blockNumber: tx.blockNumber,
+                timestamp: tx.timestamp,
+                data: { number: tx.blockNumber, timestamp: tx.timestamp }
+              });
+              
+              // Add gas info to the transaction-block link
+              links.push({ 
+                source: txId, 
+                target: blockId, 
+                value: '0', 
+                type: 'interact',
+                gas: tx.gas,
+                gasPrice: tx.gasPrice,
+                gasUsed: tx.gasUsed
+              });
+            }
+            
             if (tx.from && tx.from.toLowerCase() === data.address.toLowerCase()) {
               // This address is sending
               if (tx.to) {
@@ -492,19 +522,13 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick, 
                   source: data.address, 
                   target: txId, 
                   value: tx.value || '0', 
-                  type: 'send',
-                  gas: tx.gas,
-                  gasPrice: tx.gasPrice,
-                  gasUsed: tx.gasUsed
+                  type: 'send'
                 });
                 links.push({ 
                   source: txId, 
                   target: tx.to, 
                   value: tx.value || '0', 
-                  type: 'send',
-                  gas: tx.gas,
-                  gasPrice: tx.gasPrice,
-                  gasUsed: tx.gasUsed
+                  type: 'send'
                 });
               } else {
                 // Contract creation
@@ -517,19 +541,13 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick, 
                   source: data.address, 
                   target: txId, 
                   value: tx.value || '0', 
-                  type: 'send',
-                  gas: tx.gas,
-                  gasPrice: tx.gasPrice,
-                  gasUsed: tx.gasUsed
+                  type: 'send'
                 });
                 links.push({ 
                   source: txId, 
                   target: contractAddr, 
                   value: tx.value || '0', 
-                  type: 'send',
-                  gas: tx.gas,
-                  gasPrice: tx.gasPrice,
-                  gasUsed: tx.gasUsed
+                  type: 'send'
                 });
               }
             } else if (tx.to && tx.to.toLowerCase() === data.address.toLowerCase()) {
@@ -543,37 +561,15 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick, 
                   source: tx.from, 
                   target: txId, 
                   value: tx.value || '0', 
-                  type: 'send',
-                  gas: tx.gas,
-                  gasPrice: tx.gasPrice,
-                  gasUsed: tx.gasUsed
+                  type: 'send'
                 });
                 links.push({ 
                   source: txId, 
                   target: data.address, 
                   value: tx.value || '0', 
-                  type: 'send',
-                  gas: tx.gas,
-                  gasPrice: tx.gasPrice,
-                  gasUsed: tx.gasUsed
+                  type: 'send'
                 });
               }
-            }
-            
-            // Add block node if available
-            if (tx.blockNumber) {
-              const blockId = `block-${tx.blockNumber}`;
-              addNode(blockId, 'block', { 
-                blockNumber: tx.blockNumber,
-                timestamp: tx.timestamp,
-                data: { number: tx.blockNumber, timestamp: tx.timestamp }
-              });
-              links.push({ 
-                source: blockId, 
-                target: txId, 
-                value: '0', 
-                type: 'interact'
-              });
             }
           });
         }
@@ -599,9 +595,7 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick, 
             source: tx.from, 
             target: txId, 
             value: tx.value || '0', 
-            type: 'send',
-            gas: tx.gas,
-            gasPrice: tx.gasPrice
+            type: 'send'
           });
         }
         
@@ -613,9 +607,7 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick, 
             source: txId, 
             target: tx.to, 
             value: tx.value || '0', 
-            type: 'send',
-            gas: tx.gas,
-            gasPrice: tx.gasPrice
+            type: 'send'
           });
         } else if (data.receipt?.contractAddress) {
           // Contract creation
@@ -624,9 +616,28 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick, 
             source: txId, 
             target: data.receipt.contractAddress, 
             value: tx.value || '0', 
-            type: 'send',
+            type: 'send'
+          });
+        }
+        
+        // Add block node if available
+        if (tx.blockNumber) {
+          const blockId = `block-${tx.blockNumber}`;
+          addNode(blockId, 'block', { 
+            blockNumber: tx.blockNumber,
+            timestamp: tx.timestamp,
+            data: { number: tx.blockNumber, timestamp: tx.timestamp }
+          });
+          
+          // Add gas info to the transaction-block link
+          links.push({ 
+            source: txId, 
+            target: blockId, 
+            value: '0', 
+            type: 'interact',
             gas: tx.gas,
-            gasPrice: tx.gasPrice
+            gasPrice: tx.gasPrice,
+            gasUsed: tx.gasUsed
           });
         }
       } else if (data.type === 'block') {
@@ -657,7 +668,16 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick, 
               data: tx
             });
             
-            links.push({ source: blockId, target: txId, value: '0', type: 'interact' });
+            // Add gas info to the transaction-block link
+            links.push({ 
+              source: txId, 
+              target: blockId, 
+              value: '0', 
+              type: 'interact',
+              gas: tx.gas,
+              gasPrice: tx.gasPrice,
+              gasUsed: tx.gasUsed
+            });
             
             if (tx.from) {
               addNode(tx.from, 'address', { role: 'from' });
@@ -665,9 +685,7 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick, 
                 source: tx.from, 
                 target: txId, 
                 value: tx.value || '0', 
-                type: 'send',
-                gas: tx.gas,
-                gasPrice: tx.gasPrice
+                type: 'send'
               });
             }
             
@@ -677,9 +695,7 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick, 
                 source: txId, 
                 target: tx.to, 
                 value: tx.value || '0', 
-                type: 'send',
-                gas: tx.gas,
-                gasPrice: tx.gasPrice
+                type: 'send'
               });
             }
           });
@@ -706,4 +722,4 @@ const TransactionGraph: React.FC<TransactionGraphProps> = ({ data, onNodeClick, 
   );
 };
 
-export default TransactionGraph;
+export default BlockGraph;

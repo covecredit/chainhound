@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Search, Menu, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import Navbar from './components/Navbar';
 import Dashboard from './pages/Dashboard';
-import TransactionViewer from './pages/TransactionViewer';
+import BlockExplorer from './pages/BlockExplorer';
 import CaseManager from './pages/CaseManager';
 import Settings from './pages/Settings';
 import Footer from './components/Footer';
@@ -132,7 +132,7 @@ function App() {
             <main className="flex-1 p-4 overflow-auto">
               <Routes>
                 <Route path="/" element={<Dashboard />} />
-                <Route path="/transactions" element={<TransactionViewer />} />
+                <Route path="/blocks" element={<BlockExplorer />} />
                 <Route path="/cases" element={<CaseManager />} />
                 <Route path="/settings" element={<Settings />} />
               </Routes>

@@ -187,6 +187,27 @@ class BlockCache {
   }
 
   /**
+   * Get a specific error block by block number
+   */
+  async getErrorBlock(blockNumber: number): Promise<any | undefined> {
+    if (!this.isInitialized) {
+      await this.dbPromise;
+    }
+    
+    try {
+      if (blockNumber === undefined || blockNumber === null || isNaN(blockNumber)) {
+        return undefined;
+      }
+      
+      const db = await this.dbPromise;
+      return await db.get(this.ERROR_STORE_NAME, blockNumber);
+    } catch (error) {
+      console.error('Failed to get error block:', error);
+      return undefined;
+    }
+  }
+
+  /**
    * Get all error blocks
    */
   async getErrorBlocks(): Promise<any[]> {

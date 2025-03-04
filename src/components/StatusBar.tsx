@@ -1,8 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Server, Clock, Database, Wifi, WifiOff, Zap, RefreshCw, AlertTriangle, HardDrive } from 'lucide-react';
+import { Server, Clock, Database, Wifi, WifiOff, Zap, RefreshCw, AlertTriangle, HardDrive, Trash2 } from 'lucide-react';
 import { useWeb3Context } from '../contexts/Web3Context';
 import { format } from 'date-fns';
 import { blockCache } from '../services/BlockCache';
+
+interface RecentSearch {
+  query: string;
+  timestamp: number;
+  type: 'address' | 'transaction' | 'block' | 'unknown';
+}
 
 const StatusBar = () => {
   const { web3, provider, isConnected, networkInfo, debugMode, isReconnecting, reconnectProvider, autoReconnect } = useWeb3Context();
@@ -96,10 +102,11 @@ const StatusBar = () => {
     <div className="bg-gray-100 border-t border-gray-200 py-1 text-xs text-gray-600 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300">
       <div className="container mx-auto px-4">
         <div className="flex flex-wrap justify-between items-center">
-          <div className="flex flex-wrap items-center space-x-2 gap-y-1 overflow-x-auto pb-1 scrollbar-hide w-full sm:w-auto">
+          {/* First row - Provider information */}
+          <div className="flex flex-wrap items-center space-x-2 gap-y-1 overflow-x-auto pb-1 scrollbar-hide w-full">
             <div className="flex items-center whitespace-nowrap status-bar-item">
               <Server className="h-3 w-3 mr-1 flex-shrink-0" />
-              <span className="truncate">Provider: {getProviderDisplayName()}</span>
+              <span className="truncate max-w-[200px]">Provider: {getProviderDisplayName()}</span>
             </div>
             
             <div className="flex items-center whitespace-nowrap status-bar-item">
@@ -143,7 +150,7 @@ const StatusBar = () => {
                 
                 {networkInfo.chainId !== undefined && (
                   <div className="flex items-center whitespace-nowrap status-bar-item">
-                    <span>Chain ID: {networkInfo.chainId}</span>
+                    <span>Chain ID: {networkInfo.chainId.toString()}</span>
                   </div>
                 )}
                 
@@ -161,29 +168,42 @@ const StatusBar = () => {
                 <span>Auto-reconnecting...</span>
               </div>
             )}
-            
+          </div>
+          
+          {/* Second row - Cache information */}
+          <div className="flex flex-wrap items-center space-x-2 gap-y-1 overflow-x-auto pb-1 scrollbar-hide w-full mt-1 border-t border-gray-200 pt-1 dark:border-gray-700">
             {/* Cache stats */}
             <div className="flex items-center whitespace-nowrap status-bar-item">
               <Database className="h-3 w-3 mr-1 flex-shrink-0" />
-              <span>Cache: {cacheStats.totalBlocks.toLocaleString()} blocks</span>
-              {cacheStats.oldestBlock !== undefined && cacheStats.newestBlock !== undefined && (
-                <span className="ml-1 text-gray-500 dark:text-gray-400">
-                  (#{cacheStats.oldestBlock.toLocaleString()} - #{cacheStats.newestBlock.toLocaleString()})
-                </span>
-              )}
-              {cacheStats.sizeEstimate && (
-                <span className="ml-1 text-gray-500 dark:text-gray-400">
-                  {cacheStats.sizeEstimate}
-                </span>
-              )}
+              <span>Blocks: {cacheStats.totalBlocks.toLocaleString()}</span>
+            </div>
+            
+            {cacheStats.oldestBlock !== undefined && cacheStats.newestBlock !== undefined && (
+              <div className="flex items-center whitespace-nowrap status-bar-item">
+                <span>Range: {cacheStats.oldestBlock.toLocaleString()} - {cacheStats.newestBlock.toLocaleString()}</span>
+              </div>
+            )}
+            
+            <div className="flex items-center whitespace-nowrap status-bar-item">
+              <HardDrive className="h-3 w-3 mr-1 flex-shrink-0" />
+              <span>Size: {cacheStats.sizeEstimate}</span>
             </div>
             
             {cacheStats.errorBlocks > 0 && (
               <div className="flex items-center whitespace-nowrap status-bar-item">
-                <AlertTriangle className="h-3 w-3 mr-1 flex-shrink-0 text-amber-500" />
-                <span className="text-amber-600 dark:text-amber-400">Error blocks: {cacheStats.errorBlocks}</span>
+                <AlertTriangle className="h-3 w-3 mr-1 flex-shrink-0 text-yellow-500" />
+                <span>Errors: {cacheStats.errorBlocks}</span>
               </div>
             )}
+            
+            <button
+              onClick={handleClearCache}
+              className="flex items-center whitespace-nowrap status-bar-item text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
+              title="Clear cache"
+            >
+              <Trash2 className="h-3 w-3 mr-1 flex-shrink-0" />
+              <span>Clear</span>
+            </button>
           </div>
         </div>
       </div>

@@ -72,7 +72,7 @@ const Dashboard = () => {
       // Store the search query in session storage
       sessionStorage.setItem('chainhound_search', searchInput);
       
-      // Navigate to transaction viewer with the search query
+      // Navigate to block explorer with the search query
       navigate('/transactions');
     } catch (err: any) {
       console.error('Error processing search:', err);
@@ -191,9 +191,9 @@ const Dashboard = () => {
           <div className="flex items-center justify-center h-12 w-12 rounded-md bg-indigo-100 text-indigo-600 mb-4 dark:bg-indigo-900 dark:text-indigo-300">
             <Network className="h-6 w-6" />
           </div>
-          <h3 className="text-lg font-medium">Transaction Viewer</h3>
+          <h3 className="text-lg font-medium">Block Explorer</h3>
           <p className="mt-2 text-gray-600 dark:text-gray-300">
-            Visualize transaction flows with interactive graphs and identify patterns.
+            Visualize blockchain data with interactive graphs and identify patterns.
           </p>
         </div>
         

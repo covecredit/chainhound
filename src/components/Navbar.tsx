@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, Network, FolderKanban, Settings } from 'lucide-react';
+import { Home, Network, Layers, FolderKanban, Settings } from 'lucide-react';
 
 interface NavbarProps {
   onNavItemClick?: () => void;
@@ -30,12 +30,12 @@ const Navbar: React.FC<NavbarProps> = ({ onNavItemClick, collapsed = false }) =>
           </NavLink>
           
           <NavLink 
-            to="/transactions" 
+            to="/blocks" 
             className={({ isActive }) => 
               `flex items-center justify-center p-2 rounded-md ${isActive ? 'bg-indigo-700' : 'hover:bg-gray-700'}`
             }
             onClick={handleNavClick}
-            title="Transaction Viewer"
+            title="Block Explorer"
           >
             <Network className="h-5 w-5" />
           </NavLink>
@@ -86,14 +86,14 @@ const Navbar: React.FC<NavbarProps> = ({ onNavItemClick, collapsed = false }) =>
             </li>
             <li>
               <NavLink 
-                to="/transactions" 
+                to="/blocks" 
                 className={({ isActive }) => 
                   `flex items-center px-3 py-2 rounded-md ${isActive ? 'bg-indigo-700' : 'hover:bg-gray-700'}`
                 }
                 onClick={handleNavClick}
               >
                 <Network className="h-5 w-5 mr-3" />
-                Transaction Viewer
+                Block Explorer
               </NavLink>
             </li>
           </ul>
