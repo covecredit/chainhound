@@ -153,7 +153,7 @@ const App: React.FC = () => {
               )}
             </div>
 
-            <main className="flex-1 p-4 overflow-auto">
+            <main className="flex-1 p-4 overflow-auto w-full">
               <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/blocks" element={<BlockExplorer />} />

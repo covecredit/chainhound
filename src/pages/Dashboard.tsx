@@ -73,7 +73,7 @@ const Dashboard = () => {
       sessionStorage.setItem('chainhound_search', searchInput);
       
       // Navigate to block explorer with the search query
-      navigate('/transactions');
+      navigate('/blocks');
     } catch (err: any) {
       console.error('Error processing search:', err);
       setError(err.message || 'Failed to process search query');
@@ -89,7 +89,7 @@ const Dashboard = () => {
   const handleRecentSearchClick = (query: string) => {
     setSearchInput(query);
     sessionStorage.setItem('chainhound_search', query);
-    navigate('/transactions');
+    navigate('/blocks');
   };
   
   const formatTimestamp = (timestamp: number) => {
@@ -176,7 +176,7 @@ const Dashboard = () => {
                       <span className="truncate">{search.query}</span>
                     </div>
                     <span className="text-xs text-gray-500 dark:text-gray-400 ml-2 whitespace-nowrap">
-                      {formatTimestamp(search.timestamp)}
+                      { formatTimestamp(search.timestamp)}
                     </span>
                   </div>
                 ))
@@ -187,7 +187,10 @@ const Dashboard = () => {
       </div>
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white p-4 rounded-lg shadow-md dark:bg-gray-800 dark:text-white">
+        <div 
+          className="bg-white p-4 rounded-lg shadow-md dark:bg-gray-800 dark:text-white cursor-pointer hover:shadow-lg transition"
+          onClick={() => navigate('/blocks')}
+        >
           <div className="flex items-center justify-center h-12 w-12 rounded-md bg-indigo-100 text-indigo-600 mb-4 dark:bg-indigo-900 dark:text-indigo-300">
             <Network className="h-6 w-6" />
           </div>
@@ -197,7 +200,10 @@ const Dashboard = () => {
           </p>
         </div>
         
-        <div className="bg-white p-4 rounded-lg shadow-md dark:bg-gray-800 dark:text-white">
+        <div 
+          className="bg-white p-4 rounded-lg shadow-md dark:bg-gray-800 dark:text-white cursor-pointer hover:shadow-lg transition"
+          onClick={() => navigate('/cases')}
+        >
           <div className="flex items-center justify-center h-12 w-12 rounded-md bg-indigo-100 text-indigo-600 mb-4 dark:bg-indigo-900 dark:text-indigo-300">
             <FileText className="h-6 w-6" />
           </div>

@@ -45,128 +45,130 @@
     "type": "https"
   },
   {
-    "name": "ethereum.blockpi.network (HTTPS)",
+    "name": "BlockPI",
     "url": "https://ethereum.blockpi.network/v1/rpc/public",
-    "network": "mainnet"
+    "type": "https"
   },
   {
-    "name": "rpc.flashbots.net (HTTPS)",
+    "name": "Flashbots",
     "url": "https://rpc.flashbots.net",
-    "network": "mainnet"
+    "type": "https"
   },
   {
-    "name": "ethereum.rpc.subquery.network (HTTPS)",
+    "name": "SubQuery",
     "url": "https://ethereum.rpc.subquery.network/public",
-    "network": "mainnet"
+    "type": "https"
   },
   {
-    "name": "virginia.rpc.blxrbdn.com (HTTPS)",
+    "name": "Blxrbdn Virginia",
     "url": "https://virginia.rpc.blxrbdn.com",
-    "network": "mainnet"
+    "type": "https"
   },
   {
-    "name": "singapore.rpc.blxrbdn.com (HTTPS)",
+    "name": "Blxrbdn Singapore",
     "url": "https://singapore.rpc.blxrbdn.com",
-    "network": "mainnet"
+    "type": "https"
   },
   {
-    "name": "eth1.lava.build (HTTPS)",
+    "name": "Lava",
     "url": "https://eth1.lava.build",
-    "network": "mainnet"
+    "type": "https"
   },
   {
-    "name": "core.gashawk.io (HTTPS)",
+    "name": "GasHawk",
     "url": "https://core.gashawk.io/rpc",
-    "network": "mainnet"
+    "type": "https"
   },
   {
-    "name": "api.securerpc.com (HTTPS)",
+    "name": "SecureRPC",
     "url": "https://api.securerpc.com/v1",
-    "network": "mainnet"
+    "type": "https"
   },
   {
-    "name": "eth-mainnet.nodereal.io (HTTPS)",
+    "name": "NodeReal",
     "url": "https://eth-mainnet.nodereal.io/v1/1659dfb40aa24bbb8153a677b98064d7",
-    "network": "mainnet"
+    "type": "https"
   },
   {
-    "name": "mainnet.gateway.tenderly.co (HTTPS)",
+    "name": "Tenderly",
     "url": "https://mainnet.gateway.tenderly.co",
-    "network": "mainnet"
+    "type": "https"
   },
   {
-    "name": "eth.blockrazor.xyz (HTTPS)",
+    "name": "Blockrazor",
     "url": "https://eth.blockrazor.xyz",
-    "network": "mainnet"
+    "type": "https"
   },
   {
-    "name": "rpc.payload.de (HTTPS)",
+    "name": "Payload",
     "url": "https://rpc.payload.de",
-    "network": "mainnet"
+    "type": "https"
   },
   {
-    "name": "rpc.mevblocker.io (HTTPS)",
+    "name": "MEV Blocker",
     "url": "https://rpc.mevblocker.io",
-    "network": "mainnet"
+    "type": "https"
   },
   {
-    "name": "rpc.graffiti.farm (HTTPS)",
+    "name": "Graffiti",
     "url": "https://rpc.graffiti.farm",
-    "network": "mainnet"
+    "type": "https"
   },
   {
-    "name": "eth-pokt.nodies.app (HTTPS)",
+    "name": "Nodies",
     "url": "https://eth-pokt.nodies.app",
-    "network": "mainnet"
+    "type": "https"
   },
   {
-    "name": "eth.rpc.blxrbdn.com (HTTPS)",
+    "name": "Blxrbdn",
     "url": "https://eth.rpc.blxrbdn.com",
-    "network": "mainnet"
+    "type": "https"
   },
   {
-    "name": "uk.rpc.blxrbdn.com (HTTPS)",
+    "name": "Blxrbdn UK",
     "url": "https://uk.rpc.blxrbdn.com",
-    "network": "mainnet"
+    "type": "https"
   },
   {
-    "name": "gateway.tenderly.co/public/mainnet (HTTPS)",
+    "name": "Tenderly Public",
     "url": "https://gateway.tenderly.co/public/mainnet",
-    "network": "mainnet"
+    "type": "https"
   },
   {
-    "name": "rpc.mevblocker.io/noreverts (HTTPS)",
+    "name": "MEV Blocker NoReverts",
     "url": "https://rpc.mevblocker.io/noreverts",
-    "network": "mainnet"
+    "type": "https"
   },
   {
     "name": "eth.drpc.org (WSS)",
     "url": "wss://eth.drpc.org",
-    "network": "mainnet"
+    "type": "wss"
   },
   {
-    "name": "mainnet.gateway.tenderly.co (WSS)",
+    "name": "Tenderly (WSS)",
     "url": "wss://mainnet.gateway.tenderly.co",
-    "network": "mainnet"
+    "type": "wss"
   },
   {
-    "name": "ethereum-rpc.publicnode.com (WSS)",
+    "name": "Public Node (WSS)",
     "url": "wss://ethereum-rpc.publicnode.com",
-    "network": "mainnet"
+    "type": "wss"
   },
   {
-    "name": "ws-rpc.graffiti.farm (WSS)",
+    "name": "Graffiti (WSS)",
     "url": "wss://ws-rpc.graffiti.farm",
-    "network": "mainnet"
+    "type": "wss"
   },
   {
-    "name": "Sepolia Testnet (HTTPS)",
+    "name": "Sepolia Testnet",
     "url": "https://rpc.sepolia.org",
+    "type": "https",
     "network": "sepolia"
   },
   {
-    "name": "Goerli Testnet (HTTPS)",
+    "name": "Goerli Testnet",
     "url": "https://rpc.ankr.com/eth_goerli",
+    "type": "https",
     "network": "goerli"
   }
 ]

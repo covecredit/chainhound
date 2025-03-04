@@ -1,4 +1,5 @@
 import { openDB, IDBPDatabase } from 'idb';
+import { safelyConvertBigIntToString } from '../utils/bigIntUtils';
 
 interface Block {
   number: number;
@@ -67,7 +68,7 @@ class BlockCache {
       }
       
       // Convert any BigInt values to strings before storing
-      const safeBlock = this.convertBigIntToString(block);
+      const safeBlock = safelyConvertBigIntToString(block);
       
       const db = await this.dbPromise;
       await db.put(this.STORE_NAME, safeBlock);
@@ -106,7 +107,7 @@ class BlockCache {
       await Promise.all([
         ...validBlocks.map(block => {
           // Convert any BigInt values to strings before storing
-          const safeBlock = this.convertBigIntToString(block);
+          const safeBlock = safelyConvertBigIntToString(block);
           return tx.store.put(safeBlock);
         }),
         tx.done
@@ -535,29 +536,7 @@ class BlockCache {
    * Convert BigInt values in an object to strings
    */
   private convertBigIntToString(obj: any): any {
-    if (obj === null || obj === undefined) {
-      return obj;
-    }
-    
-    if (typeof obj === 'bigint') {
-      return obj.toString();
-    }
-    
-    if (typeof obj === 'object') {
-      if (Array.isArray(obj)) {
-        return obj.map(item => this.convertBigIntToString(item));
-      }
-      
-      const result: Record<string, any> = {};
-      for (const key in obj) {
-        if (Object.prototype.hasOwnProperty.call(obj, key)) {
-          result[key] = this.convertBigIntToString(obj[key]);
-        }
-      }
-      return result;
-    }
-    
-    return obj;
+    return safelyConvertBigIntToString(obj);
   }
 }
 

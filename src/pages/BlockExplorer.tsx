@@ -18,6 +18,7 @@ import { blockCache } from "../services/BlockCache";
 import { toPng } from "html-to-image";
 import { saveAs } from "file-saver";
 import { formatTimestamp } from "../utils/dateUtils";
+import { safelyConvertBigIntToString } from "../utils/bigIntUtils";
 
 interface SearchProgress {
   status: "idle" | "searching" | "completed" | "cancelled" | "error";
@@ -82,7 +83,7 @@ interface NodeDetails {
 }
 
 const BlockExplorer = () => {
-  const { web3, isConnected } = useWeb3Context();
+  const { web3, isConnected, reconnectProvider } = useWeb3Context();
   const [searchInput, setSearchInput] = useState("");
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [currentSearchIndex, setCurrentSearchIndex] = useState(-1);
@@ -93,7 +94,7 @@ const BlockExplorer = () => {
   const [searchRange, setSearchRange] = useState({
     startBlock: "",
     endBlock: "",
-    maxBlocks: "5000",
+    maxBlocks: "1000",
   });
   const [searchProgress, setSearchProgress] = useState<SearchProgress>({
     status: "idle",
@@ -108,6 +109,7 @@ const BlockExplorer = () => {
   const searchHistoryRef = useRef<HTMLDivElement>(null);
   const graphRef = useRef<HTMLDivElement>(null);
   const searchCancelRef = useRef<boolean>(false);
+  const [providerSwitchAttempted, setProviderSwitchAttempted] = useState(false);
 
   // Load recent searches from localStorage on component mount
   useEffect(() => {
@@ -118,6 +120,15 @@ const BlockExplorer = () => {
       } catch (err) {
         console.error("Failed to parse recent searches:", err);
       }
+    }
+
+    // Check if there's a search query in session storage (from Dashboard)
+    const savedSearch = sessionStorage.getItem("chainhound_search");
+    if (savedSearch) {
+      setSearchInput(savedSearch);
+      handleSearch(savedSearch);
+      // Clear it after use
+      sessionStorage.removeItem("chainhound_search");
     }
   }, []);
 
@@ -249,6 +260,15 @@ const BlockExplorer = () => {
       setBlockData(null);
       setSelectedNodeDetails(null);
       searchCancelRef.current = false;
+      setProviderSwitchAttempted(false);
+      
+      // Reset search progress
+      setSearchProgress({
+        status: "idle",
+        blocksProcessed: 0,
+        blocksTotal: 0,
+        transactionsFound: 0,
+      });
 
       // Add to search history if it's a new search
       if (!searchHistory.includes(searchQuery)) {
@@ -272,30 +292,34 @@ const BlockExplorer = () => {
         // Search for an address
         await searchAddress(searchQuery);
       } else {
-        setError(
-          "Invalid search query. Please enter a valid block number, transaction hash, or address."
-        );
+        setError("Invalid search query. Please enter a valid block number, transaction hash, or address.");
       }
-    } catch (err: Error | unknown) {
-      if (err instanceof Error) {
-        console.error("Search error:", err);
-        setError(err.message || "An error occurred during search.");
-        setSearchProgress({
-          ...searchProgress,
-          status: "error",
-          message: err.message || "An error occurred during search.",
-        });
-      } else {
-        console.error("Unknown error:", err);
-        setError("An unknown error occurred during search.");
-        setSearchProgress({
-          ...searchProgress,
-          status: "error",
-          message: "An unknown error occurred during search.",
-        });
+    } catch (error: any) {
+      console.error("Search error:", error);
+      setError(error.message || "An error occurred during search");
+      
+      // If we haven't tried switching providers yet and it's a connection issue
+      if (!providerSwitchAttempted && 
+          (error.message.includes("connection") || 
+           error.message.includes("network") || 
+           error.message.includes("timeout"))) {
+        setError("Connection issue detected. Attempting to reconnect...");
+        setProviderSwitchAttempted(true);
+        
+        try {
+          await reconnectProvider();
+          // Try the search again after reconnecting
+          handleSearch(searchQuery);
+        } catch (reconnectError) {
+          setError("Failed to reconnect. Please try again or check your connection in Settings.");
+        }
       }
     } finally {
       setIsLoading(false);
+      setSearchProgress((prev) => ({
+        ...prev,
+        status: "completed",
+      }));
     }
   };
 
@@ -307,92 +331,72 @@ const BlockExplorer = () => {
         blocksTotal: 1,
         transactionsFound: 0,
       });
-
-      // Try to get from cache first
-      const blockNumber = parseInt(blockId);
-      let block = await blockCache.getBlock(blockNumber);
-      let fromCache = true;
-
-      if (!block) {
-        fromCache = false;
-        try {
-          // Not in cache, fetch from blockchain with retries
-          const maxRetries = 3;
-          let retryCount = 0;
-          let lastError;
-
-          while (retryCount < maxRetries) {
-            try {
-              block = (await web3!.eth.getBlock(
-                blockNumber,
-                true
-              )) as unknown as Block;
-              break;
-            } catch (error) {
-              lastError = error;
-              retryCount++;
-              if (retryCount < maxRetries) {
-                // Exponential backoff
-                await new Promise((resolve) =>
-                  setTimeout(resolve, 1000 * Math.pow(2, retryCount - 1))
-                );
-              }
-            }
-          }
-
-          if (!block && lastError) {
-            throw lastError;
-          }
-
-          // Cache the block if successfully fetched
-          if (block) {
-            await blockCache.cacheBlock(block as unknown as Block);
-          }
-        } catch (error) {
-          // Record the error in cache
-          await blockCache.recordErrorBlock(
-            blockNumber,
-            error instanceof Error ? error.name : "UnknownError",
-            error instanceof Error ? error.message : "Failed to fetch block"
-          );
-          throw error;
-        }
+      
+      // Convert block ID to number
+      const blockNumber = Number(blockId);
+      
+      // Check if block is in cache first
+      const cachedBlock = await blockCache.getBlock(blockNumber);
+      
+      if (cachedBlock) {
+        console.log("Block found in cache:", cachedBlock);
+        setBlockData({
+          type: "block",
+          block: cachedBlock,
+        });
+        
+        // Set initial node details for the block
+        setSelectedNodeDetails({
+          type: "block",
+          blockNumber: cachedBlock.number,
+          hash: cachedBlock.hash,
+          timestamp: cachedBlock.timestamp
+        });
+        
+        setSearchProgress({
+          status: "completed",
+          blocksProcessed: 1,
+          blocksTotal: 1,
+          transactionsFound: cachedBlock.transactions?.length || 0,
+        });
+        return;
       }
-
+      
+      // Fetch block from blockchain
+      const block = await web3!.eth.getBlock(blockNumber, true);
+      
       if (!block) {
-        throw new Error(`Block ${blockId} not found.`);
+        throw new Error(`Block ${blockId} not found`);
       }
-
-      // Update block type casting
-      const typedBlock: Block = {
-        ...block,
-        number: Number(block.number),
-        timestamp: Number(block.timestamp),
-        transactions: block.transactions as Transaction[],
-      };
-
-      // Format the data for the graph
-      const formattedData = {
-        type: "block" as const,
-        block: typedBlock,
-        fromCache,
-      };
-
-      setBlockData(formattedData);
+      
+      // Convert any BigInt values to strings before caching
+      const safeBlock = safelyConvertBigIntToString(block);
+      
+      // Cache the block for future use
+      await blockCache.cacheBlock(safeBlock);
+      
+      setBlockData({
+        type: "block",
+        block: safeBlock as unknown as Block,
+      });
+      
+      // Set initial node details for the block
+      setSelectedNodeDetails({
+        type: "block",
+        blockNumber: safeBlock.number,
+        hash: safeBlock.hash,
+        timestamp: safeBlock.timestamp
+      });
+      
       setSearchProgress({
         status: "completed",
         blocksProcessed: 1,
         blocksTotal: 1,
-        transactionsFound: block.transactions ? block.transactions.length : 0,
+        transactionsFound: safeBlock.transactions?.length || 0,
       });
-    } catch (err: Error | unknown) {
-      if (err instanceof Error) {
-        console.error("Error searching for block:", err);
-        throw new Error(`Failed to fetch block ${blockId}: ${err.message}`);
-      } else {
-        console.error("Unknown error:", err);
-        throw new Error("An unknown error occurred during block search.");
-      }
+    } catch (error: any) {
+      console.error("Error searching for block:", error);
+      throw new Error(`Failed to fetch block ${blockId}: ${error.message}`);
     }
   };
 
@@ -404,554 +408,417 @@ const BlockExplorer = () => {
         blocksTotal: 1,
         transactionsFound: 0,
       });
-
+      
       // Fetch transaction
       const tx = await web3!.eth.getTransaction(txHash);
+      
       if (!tx) {
-        throw new Error(`Transaction ${txHash} not found.`);
+        throw new Error(`Transaction ${txHash} not found`);
       }
-
-      // Fetch transaction receipt
+      
+      // Convert any BigInt values to strings
+      const safeTx = safelyConvertBigIntToString(tx);
+      
+      // Fetch transaction receipt for additional info
       const receipt = await web3!.eth.getTransactionReceipt(txHash);
-
-      // Fetch the block to get timestamp
-      const block = await web3!.eth.getBlock(tx.blockNumber!);
-
-      // Add timestamp to transaction
+      const safeReceipt = safelyConvertBigIntToString(receipt);
+      
+      // Fetch block to get timestamp
+      let block;
+      if (safeTx.blockNumber) {
+        // Check cache first
+        block = await blockCache.getBlock(Number(safeTx.blockNumber));
+        
+        if (!block) {
+          // Fetch from blockchain if not in cache
+          const fetchedBlock = await web3!.eth.getBlock(safeTx.blockNumber);
+          
+          // Convert any BigInt values to strings
+          block = safelyConvertBigIntToString(fetchedBlock);
+          
+          // Cache the block
+          if (block) {
+            await blockCache.cacheBlock(block);
+          }
+        }
+      }
+      
+      // Add timestamp to transaction if block is available
       const txWithTimestamp = {
-        ...tx,
-        blockNumber: tx.blockNumber?.toString() || "",
-        timestamp: Number(block.timestamp),
-      } as unknown as Transaction;
-
-      // Format the data for the graph
+        ...safeTx,
+        timestamp: block?.timestamp,
+      };
+      
       setBlockData({
-        type: "transaction" as const,
-        transaction: txWithTimestamp,
-        receipt: receipt,
+        type: "transaction",
+        transaction: txWithTimestamp as unknown as Transaction,
+        receipt: safeReceipt,
       });
+      
+      // Set initial node details for the transaction
+      setSelectedNodeDetails({
+        type: "transaction",
+        hash: txWithTimestamp.hash,
+        blockNumber: Number(txWithTimestamp.blockNumber),
+        value: txWithTimestamp.value,
+        timestamp: txWithTimestamp.timestamp
+      });
+      
       setSearchProgress({
         status: "completed",
-        blocksProcessed: 1,
+        blocksProcessed: block ? 1 : 0,
         blocksTotal: 1,
         transactionsFound: 1,
       });
-    } catch (err: Error | unknown) {
-      if (err instanceof Error) {
-        console.error("Error searching for transaction:", err);
-        throw new Error(
-          `Failed to fetch transaction ${txHash}: ${err.message}`
-        );
-      } else {
-        console.error("Unknown error:", err);
-        throw new Error("An unknown error occurred during transaction search.");
-      }
+    } catch (error: any) {
+      console.error("Error searching for transaction:", error);
+      throw new Error(`Failed to fetch transaction ${txHash}: ${error.message}`);
     }
   };
 
   const searchAddress = async (address: string) => {
     try {
-      // Validate the range
-      let startBlock = searchRange.startBlock
-        ? parseInt(searchRange.startBlock)
-        : undefined;
-      let endBlock = searchRange.endBlock
-        ? parseInt(searchRange.endBlock)
-        : undefined;
-      const maxBlocks = parseInt(searchRange.maxBlocks) || 5000;
-
-      // Get current block if end block not specified
-      if (endBlock === undefined) {
-        const currentBlock = Number(await web3!.eth.getBlockNumber());
-        endBlock = currentBlock;
-      }
-
-      // Calculate start block if not specified
-      if (startBlock === undefined && endBlock !== undefined) {
-        startBlock = Math.max(0, endBlock - maxBlocks + 1);
-      }
-
-      if (startBlock === undefined || endBlock === undefined) {
-        throw new Error("Invalid block range.");
-      }
-
-      // Ensure we don't search too many blocks
-      if (endBlock - startBlock + 1 > maxBlocks) {
-        startBlock = endBlock - maxBlocks + 1;
-      }
-
-      // Check if the address is a contract
+      // Check if it's a contract
       const code = await web3!.eth.getCode(address);
-      const isContract = code !== "0x";
-
-      // Initialize search progress
-      const totalBlocks = endBlock - startBlock + 1;
+      const isContract = code !== '0x';
+      
       setSearchProgress({
         status: "searching",
         blocksProcessed: 0,
-        blocksTotal: totalBlocks,
+        blocksTotal: 0,
         transactionsFound: 0,
+        message: "Searching for transactions...",
       });
-
+      
+      // If advanced search is enabled, use the specified range
+      let startBlock = 0;
+      let endBlock = Number(await web3!.eth.getBlockNumber());
+      let maxBlocks = parseInt(searchRange.maxBlocks) || 1000;
+      
+      if (showAdvancedSearch && searchRange.startBlock && searchRange.endBlock) {
+        startBlock = Number(searchRange.startBlock);
+        endBlock = Number(searchRange.endBlock);
+        
+        // Validate range
+        if (startBlock > endBlock) {
+          throw new Error("Start block must be less than or equal to end block");
+        }
+        
+        if (endBlock - startBlock >= maxBlocks) {
+          endBlock = startBlock + maxBlocks - 1;
+        }
+      } else {
+        // Default: search last 1000 blocks
+        startBlock = Math.max(0, endBlock - maxBlocks + 1);
+      }
+      
+      setSearchProgress({
+        status: "searching",
+        blocksProcessed: 0,
+        blocksTotal: endBlock - startBlock + 1,
+        transactionsFound: 0,
+        message: `Searching blocks ${startBlock} to ${endBlock}...`,
+      });
+      
       // Get list of blocks already in cache
-      const cachedBlockNumbers = await blockCache.getCachedBlockNumbers(
-        startBlock,
-        endBlock
-      );
-
-      // Get list of error blocks in the range
-      const errorBlocks = await blockCache.getErrorBlocksInRange(
-        startBlock,
-        endBlock
-      );
-      const errorBlockNumbers = new Set(errorBlocks.map((b) => b.blockNumber));
-
-      // Create a list of blocks to fetch (not in cache or are error blocks that should be retried)
-      const blocksToFetch: number[] = [];
+      const cachedBlockNumbers = await blockCache.getCachedBlockNumbers(startBlock, endBlock);
+      console.log(`Found ${cachedBlockNumbers.length} cached blocks in range`);
+      
+      // Get list of blocks that previously had errors
+      const errorBlocks = await blockCache.getErrorBlocksInRange(startBlock, endBlock);
+      const errorBlockNumbers = new Set(errorBlocks.map(b => b.blockNumber));
+      console.log(`Found ${errorBlocks.length} error blocks in range`);
+      
+      // Create a list of block numbers to fetch
+      const blocksToFetch = [];
       for (let i = startBlock; i <= endBlock; i++) {
-        const shouldRetryErrorBlock =
-          errorBlockNumbers.has(i) &&
-          localStorage.getItem("chainhound_retry_error_blocks") !== "false";
-        if (!cachedBlockNumbers.includes(i) || shouldRetryErrorBlock) {
+        // Skip blocks that are already cached
+        if (!cachedBlockNumbers.includes(i) && !errorBlockNumbers.has(i)) {
           blocksToFetch.push(i);
         }
       }
-
-      // Collect transactions for the address
-      const transactions: Transaction[] = [];
-      let blocksProcessed = 0;
-
+      
+      console.log(`Need to fetch ${blocksToFetch.length} new blocks`);
+      
       // Process cached blocks first
-      for (let i = startBlock; i <= endBlock; i++) {
-        if (searchCancelRef.current) {
-          setSearchProgress({
-            ...searchProgress,
-            status: "cancelled",
-          });
-          break;
+      const transactions: Transaction[] = [];
+      let processedBlocks = 0;
+      
+      // Process cached blocks
+      for (const blockNumber of cachedBlockNumbers) {
+        if (searchCancelRef.current) break;
+        
+        const block = await blockCache.getBlock(blockNumber);
+        if (block && block.transactions) {
+          // Find transactions involving this address
+          const relevantTxs = block.transactions.filter(tx => 
+            tx.from?.toLowerCase() === address.toLowerCase() || 
+            tx.to?.toLowerCase() === address.toLowerCase()
+          );
+          
+          // Add timestamp to transactions
+          const txsWithTimestamp = relevantTxs.map(tx => ({
+            ...tx,
+            timestamp: block.timestamp,
+            blockNumber: block.number,
+          }));
+          
+          transactions.push(...txsWithTimestamp);
         }
-
-        // Skip blocks that need to be fetched
-        if (blocksToFetch.includes(i)) continue;
-
-        try {
-          const block = await blockCache.getBlock(i);
-          if (block?.transactions && Array.isArray(block.transactions)) {
-            // Filter transactions for the address
-            const addressTxs = block.transactions.filter(
-              (tx): tx is Transaction => {
-                if (typeof tx !== "object" || tx === null) return false;
-                const txObj = tx as { from?: string; to?: string };
-                return !!(
-                  txObj.from &&
-                  txObj.to &&
-                  (txObj.from.toLowerCase() === address.toLowerCase() ||
-                    txObj.to.toLowerCase() === address.toLowerCase())
-                );
-              }
-            );
-
-            if (addressTxs.length > 0) {
-              // Add block timestamp to transactions and safely convert BigInt values
-              const txsWithTimestamp = addressTxs.map((tx: Transaction) => ({
-                ...tx,
-                timestamp: Number(block.timestamp),
-                _isContractCall:
-                  isContract && tx.to?.toLowerCase() === address.toLowerCase(),
-              }));
-
-              transactions.push(...txsWithTimestamp);
-            }
-          }
-
-          blocksProcessed++;
-
-          // Update progress every 100 blocks or when processing cached blocks is complete
-          if (
-            blocksProcessed % 100 === 0 ||
-            blocksProcessed === totalBlocks - blocksToFetch.length
-          ) {
-            setSearchProgress({
-              ...searchProgress,
-              blocksProcessed,
-              transactionsFound: transactions.length,
-            });
-          }
-        } catch (err) {
-          console.error(`Error processing cached block ${i}:`, err);
+        
+        processedBlocks++;
+        
+        // Update progress every 10 blocks
+        if (processedBlocks % 10 === 0) {
+          setSearchProgress(prev => ({
+            ...prev,
+            blocksProcessed: processedBlocks,
+            transactionsFound: transactions.length,
+            message: `Processed ${processedBlocks} of ${cachedBlockNumbers.length + blocksToFetch.length} blocks...`,
+          }));
         }
       }
-
-      // Fetch and process blocks in batches with retries
-      const batchSize = 5;
-      const maxRetries = 3;
-
+      
+      // Fetch and process new blocks
+      const batchSize = 10; // Process 10 blocks at a time
+      
       for (let i = 0; i < blocksToFetch.length; i += batchSize) {
-        if (searchCancelRef.current) {
-          setSearchProgress({
-            ...searchProgress,
-            status: "cancelled",
-          });
-          break;
-        }
-
+        if (searchCancelRef.current) break;
+        
         const batch = blocksToFetch.slice(i, i + batchSize);
-        await Promise.all(
-          batch.map(async (blockNumber) => {
-            let retryCount = 0;
-            let lastError;
-
-            while (retryCount < maxRetries) {
-              try {
-                const block = (await web3!.eth.getBlock(
-                  blockNumber,
-                  true
-                )) as unknown as Block;
-
-                if (block) {
-                  // Cache the block
-                  await blockCache.cacheBlock(block as unknown as Block);
-                  await blockCache.removeErrorBlock(blockNumber);
-
-                  if (block.transactions && Array.isArray(block.transactions)) {
-                    const addressTxs = block.transactions.filter(
-                      (tx): tx is Transaction => {
-                        if (typeof tx !== "object" || tx === null) return false;
-                        const txObj = tx as { from?: string; to?: string };
-                        return !!(
-                          txObj.from &&
-                          txObj.to &&
-                          (txObj.from.toLowerCase() === address.toLowerCase() ||
-                            txObj.to.toLowerCase() === address.toLowerCase())
-                        );
-                      }
-                    );
-
-                    if (addressTxs.length > 0) {
-                      const txsWithTimestamp = addressTxs.map(
-                        (tx: Transaction) => ({
-                          ...tx,
-                          timestamp: Number(block.timestamp),
-                          _isContractCall:
-                            isContract &&
-                            tx.to?.toLowerCase() === address.toLowerCase(),
-                        })
-                      );
-
-                      transactions.push(...txsWithTimestamp);
-                    }
-                  }
-                }
-                break;
-              } catch (error) {
-                lastError = error;
-                retryCount++;
-                if (retryCount < maxRetries) {
-                  // Exponential backoff
-                  await new Promise((resolve) =>
-                    setTimeout(resolve, 1000 * Math.pow(2, retryCount - 1))
-                  );
-                }
-              }
+        
+        // Fetch blocks in parallel
+        const blockPromises = batch.map(async (blockNumber) => {
+          try {
+            const fetchedBlock = await web3!.eth.getBlock(blockNumber, true);
+            
+            // Convert any BigInt values to strings
+            const safeBlock = safelyConvertBigIntToString(fetchedBlock);
+            
+            // Cache the block
+            if (safeBlock) {
+              await blockCache.cacheBlock(safeBlock);
+              return safeBlock;
             }
-
-            if (lastError) {
-              console.error(`Error fetching block ${blockNumber}:`, lastError);
-              await blockCache.recordErrorBlock(
-                blockNumber,
-                lastError instanceof Error ? lastError.name : "UnknownError",
-                lastError instanceof Error
-                  ? lastError.message
-                  : "Failed to fetch block"
-              );
-            }
-          })
-        );
-
-        blocksProcessed += batch.length;
-
-        // Update progress
-        setSearchProgress({
-          ...searchProgress,
-          blocksProcessed,
-          transactionsFound: transactions.length,
+            return null;
+          } catch (error) {
+            console.error(`Error fetching block ${blockNumber}:`, error);
+            // Record the error block
+            await blockCache.recordErrorBlock(
+              blockNumber, 
+              'fetch_error', 
+              error instanceof Error ? error.message : 'Unknown error'
+            );
+            return null;
+          }
         });
+        
+        const blocks = await Promise.all(blockPromises);
+        
+        // Process the fetched blocks
+        for (const block of blocks) {
+          if (block && block.transactions) {
+            // Find transactions involving this address
+            const relevantTxs = block.transactions.filter((tx: any) => 
+              tx.from?.toLowerCase() === address.toLowerCase() || 
+              tx.to?.toLowerCase() === address.toLowerCase()
+            );
+            
+            // Add timestamp to transactions
+            const txsWithTimestamp = relevantTxs.map((tx: any) => ({
+              ...tx,
+              timestamp: block.timestamp,
+              blockNumber: block.number,
+            }));
+            
+            transactions.push(...txsWithTimestamp);
+          }
+        }
+        
+        processedBlocks += batch.length;
+        
+        // Update progress
+        setSearchProgress(prev => ({
+          ...prev,
+          blocksProcessed: processedBlocks,
+          transactionsFound: transactions.length,
+          message: `Processed ${processedBlocks} of ${cachedBlockNumbers.length + blocksToFetch.length} blocks...`,
+        }));
       }
-
+      
+      // Mark transactions as contract calls if the counterparty is a contract
+      for (const tx of transactions) {
+        if (tx.from?.toLowerCase() === address.toLowerCase()) {
+          // This address is sending to another address
+          if (tx.to) {
+            try {
+              const code = await web3!.eth.getCode(tx.to);
+              tx._isContractCall = code !== '0x';
+            } catch (error) {
+              console.error(`Error checking if ${tx.to} is a contract:`, error);
+            }
+          }
+        }
+      }
+      
       // Sort transactions by block number (descending)
-      const sortedTransactions = [...transactions].sort(
-        (a: Transaction, b: Transaction) =>
-          Number(b.blockNumber) - Number(a.blockNumber)
-      );
-
-      // Format the data for the graph
-      const formattedData = {
-        type: "address" as const,
+      transactions.sort((a, b) => {
+        const blockA = Number(a.blockNumber);
+        const blockB = Number(b.blockNumber);
+        return blockB - blockA;
+      });
+      
+      // Make sure all transactions have string values for any potential BigInt fields
+      const safeTransactions = safelyConvertBigIntToString(transactions);
+      
+      setBlockData({
+        type: "address",
         address,
         isContract,
-        transactions: sortedTransactions,
-      };
-
-      setBlockData(formattedData);
+        transactions: safeTransactions,
+      });
+      
+      // Set initial node details for the address
+      setSelectedNodeDetails({
+        type: isContract ? "contract" : "address",
+        id: address
+      });
+      
       setSearchProgress({
         status: "completed",
-        blocksProcessed,
-        blocksTotal: totalBlocks,
-        transactionsFound: transactions.length,
+        blocksProcessed: processedBlocks,
+        blocksTotal: cachedBlockNumbers.length + blocksToFetch.length,
+        transactionsFound: safeTransactions.length,
       });
-    } catch (err: Error | unknown) {
-      if (err instanceof Error) {
-        console.error("Error searching for address:", err);
-        throw new Error(
-          `Failed to search for address ${address}: ${err.message}`
-        );
-      } else {
-        console.error("Unknown error:", err);
-        throw new Error("An unknown error occurred during address search.");
+      
+      if (safeTransactions.length === 0) {
+        setError(`No transactions found for address ${address} in the specified block range.`);
       }
+    } catch (error: any) {
+      console.error("Error searching for address:", error);
+      throw new Error(`Failed to search address ${address}: ${error.message}`);
     }
   };
 
   const cancelSearch = () => {
     searchCancelRef.current = true;
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      handleSearch();
-    }
-  };
-
-  const handleSearchHistoryClick = (query: string) => {
-    setSearchInput(query);
-    setShowSearchHistory(false);
-    handleSearch(query);
+    setSearchProgress(prev => ({
+      ...prev,
+      status: "cancelled",
+      message: "Search cancelled by user",
+    }));
   };
 
   const handleNodeClick = (node: NodeDetails) => {
     setSelectedNodeDetails(node);
-    if (typeof node.blockNumber === "number") {
-      searchBlock(node.blockNumber.toString());
+  };
+
+  const handleNodeDoubleClick = (node: NodeDetails) => {
+    // Navigate to the clicked node
+    if (node.type === 'address' || node.type === 'contract') {
+      setSearchInput(node.id || '');
+      handleSearch(node.id);
+    } else if (node.type === 'transaction' && node.hash) {
+      setSearchInput(node.hash);
+      handleSearch(node.hash);
+    } else if (node.type === 'block' && node.blockNumber !== undefined) {
+      setSearchInput(node.blockNumber.toString());
+      handleSearch(node.blockNumber.toString());
     }
   };
 
-  const renderNodeDetails = () => {
-    if (!selectedNodeDetails) return null;
-
-    switch (selectedNodeDetails.type) {
-      case "address":
-      case "contract":
-        return (
-          <div>
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-sm font-medium">
-                  {selectedNodeDetails.type === "contract"
-                    ? "Contract"
-                    : "Address"}
-                  {selectedNodeDetails.role && ` (${selectedNodeDetails.role})`}
-                </p>
-                <p className="text-xs font-mono mt-1 break-all">
-                  {selectedNodeDetails.id}
-                </p>
-              </div>
-              {selectedNodeDetails.id && (
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setSearchInput(selectedNodeDetails.id!);
-                    handleSearch(selectedNodeDetails.id);
-                  }}
-                  className="text-indigo-600 hover:text-indigo-800 text-xs flex items-center dark:text-indigo-400 dark:hover:text-indigo-300"
-                >
-                  <Search className="h-3 w-3 mr-1" />
-                  Search
-                </button>
-              )}
-            </div>
-          </div>
-        );
-
-      case "transaction":
-        return (
-          <div>
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-sm font-medium">Transaction</p>
-                <p className="text-xs font-mono mt-1 break-all">
-                  {selectedNodeDetails.hash}
-                </p>
-              </div>
-              {selectedNodeDetails.hash && (
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setSearchInput(selectedNodeDetails.hash!);
-                    handleSearch(selectedNodeDetails.hash);
-                  }}
-                  className="text-indigo-600 hover:text-indigo-800 text-xs flex items-center dark:text-indigo-400 dark:hover:text-indigo-300"
-                >
-                  <Search className="h-3 w-3 mr-1" />
-                  Search
-                </button>
-              )}
-            </div>
-            {selectedNodeDetails.value && (
-              <p className="text-xs mt-2">
-                <span className="font-medium">Value:</span>{" "}
-                {web3?.utils.fromWei(selectedNodeDetails.value, "ether")} ETH
-              </p>
-            )}
-            {selectedNodeDetails.blockNumber && (
-              <p className="text-xs mt-1">
-                <span className="font-medium">Block:</span>{" "}
-                {selectedNodeDetails.blockNumber}
-              </p>
-            )}
-            {selectedNodeDetails.timestamp && (
-              <p className="text-xs mt-1">
-                <span className="font-medium">Time:</span>{" "}
-                {new Date(
-                  selectedNodeDetails.timestamp * 1000
-                ).toLocaleString()}
-              </p>
-            )}
-          </div>
-        );
-
-      case "block":
-        return (
-          <div>
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-sm font-medium">
-                  Block #{selectedNodeDetails.blockNumber}
-                </p>
-                {selectedNodeDetails.hash && (
-                  <p className="text-xs font-mono mt-1 break-all">
-                    {selectedNodeDetails.hash}
-                  </p>
-                )}
-              </div>
-              {selectedNodeDetails.blockNumber && (
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    const blockNumber =
-                      selectedNodeDetails.blockNumber!.toString();
-                    setSearchInput(blockNumber);
-                    handleSearch(blockNumber);
-                  }}
-                  className="text-indigo-600 hover:text-indigo-800 text-xs flex items-center dark:text-indigo-400 dark:hover:text-indigo-300"
-                >
-                  <Search className="h-3 w-3 mr-1" />
-                  Search
-                </button>
-              )}
-            </div>
-            {selectedNodeDetails.timestamp && (
-              <p className="text-xs mt-2">
-                <span className="font-medium">Time:</span>{" "}
-                {new Date(
-                  selectedNodeDetails.timestamp * 1000
-                ).toLocaleString()}
-              </p>
-            )}
-          </div>
-        );
-
-      default:
-        return <p>Unknown node type</p>;
-    }
-  };
-
-  const captureScreenshot = async (e: React.MouseEvent) => {
-    e.preventDefault();
+  const captureGraph = async () => {
     if (!graphRef.current) return;
-
+    
     try {
-      const dataUrl = await toPng(graphRef.current);
-      const blob = await (await fetch(dataUrl)).blob();
-      saveAs(blob, `block-graph-${Date.now()}.png`);
+      const dataUrl = await toPng(graphRef.current, { quality: 0.95 });
+      
+      // Create a link and trigger download
+      const link = document.createElement('a');
+      link.download = `chainhound-graph-${Date.now()}.png`;
+      link.href = dataUrl;
+      link.click();
     } catch (error) {
-      console.error("Error capturing screenshot:", error);
+      console.error('Error capturing graph:', error);
+      setError('Failed to capture graph as image');
     }
   };
 
-  const exportData = (e: React.MouseEvent) => {
-    e.preventDefault();
-    if (!blockData) return;
-
-    const blob = new Blob([JSON.stringify(blockData, null, 2)], {
-      type: "application/json",
-    });
-    saveAs(blob, `block-data-${Date.now()}.json`);
+  const toggleAdvancedSearch = () => {
+    setShowAdvancedSearch(!showAdvancedSearch);
   };
 
-  const getSearchTypeIcon = (type: string) => {
-    switch (type) {
-      case "address":
-        return <div className="w-2 h-2 rounded-full bg-indigo-600 mr-2"></div>;
-      case "transaction":
-        return <div className="w-2 h-2 rounded-full bg-amber-500 mr-2"></div>;
-      case "block":
-        return <div className="w-2 h-2 rounded-full bg-emerald-500 mr-2"></div>;
-      default:
-        return <div className="w-2 h-2 rounded-full bg-gray-500 mr-2"></div>;
-    }
+  const handleSearchRangeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setSearchRange(prev => ({
+      ...prev,
+      [name]: value,
+    }));
   };
 
   return (
-    <div className="flex flex-col h-full w-full overflow-hidden">
-      <div className="flex flex-col flex-grow min-h-0">
-        {/* Search and Controls */}
-        <div className="flex items-center justify-between p-4 space-x-4 bg-white dark:bg-gray-800">
-          <div className="relative">
-            <div className="flex">
-              <div className="relative flex-grow">
+    <div className="space-y-6 w-full">
+      <div className="bg-white p-6 rounded-lg shadow-md dark:bg-gray-800 dark:text-white">
+        <h1 className="text-2xl font-bold mb-4">Block Explorer</h1>
+        
+        <div className="relative">
+          <div className="flex flex-col md:flex-row gap-2">
+            <div className="flex-1 relative">
+              <div className="flex">
                 <input
                   id="search-input"
                   type="text"
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  onFocus={() => setShowSearchHistory(true)}
-                  placeholder="Enter address, transaction hash, or block number..."
-                  className="w-full p-2 pl-10 border rounded focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                  placeholder="Enter block number, transaction hash, or address..."
+                  className="w-full p-2 pr-10 border rounded-l focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                 />
-                <div className="absolute left-3 top-2.5 text-gray-400 dark:text-gray-500">
-                  <Search className="h-5 w-5" />
-                </div>
-                {searchInput && (
-                  <button
-                    className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setSearchInput("");
-                    }}
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
-                )}
+                <button
+                  onClick={() => handleSearch()}
+                  disabled={isLoading}
+                  className="bg-indigo-600 text-white px-4 py-2 rounded-r hover:bg-indigo-700 transition flex items-center"
+                >
+                  {isLoading ? (
+                    <RefreshCw className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <Search className="h-5 w-5" />
+                  )}
+                </button>
               </div>
+              
+              {showSearchHistory && (
+                <div 
+                  ref={searchHistoryRef}
+                  className="absolute z-10 mt-1 w-full bg-white border rounded-md shadow-lg max-h-60 overflow-auto dark:bg-gray-700 dark:border-gray-600"
+                >
+                  {searchHistory.length === 0 ? (
+                    <div className="p-2 text-gray-500 dark:text-gray-400">No search history</div>
+                  ) : (
+                    <ul>
+                      {searchHistory.map((query, index) => (
+                        <li 
+                          key={index}
+                          className="px-3 py-2 hover:bg-gray-100 cursor-pointer dark:hover:bg-gray-600"
+                          onClick={() => {
+                            setSearchInput(query);
+                            handleSearch(query);
+                            setShowSearchHistory(false);
+                          }}
+                        >
+                          {query}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
+            
+            <div className="flex space-x-2">
               <button
-                onClick={() => handleSearch()}
-                disabled={isLoading || !searchInput.trim()}
-                className={`ml-2 px-4 py-2 rounded ${
-                  isLoading || !searchInput.trim()
-                    ? "bg-gray-300 cursor-not-allowed dark:bg-gray-600"
-                    : "bg-indigo-600 hover:bg-indigo-700 text-white"
-                }`}
-              >
-                {isLoading ? (
-                  <RefreshCw className="h-5 w-5 animate-spin" />
-                ) : (
-                  "Search"
-                )}
-              </button>
-              <button
-                onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}
-                className="ml-2 bg-gray-100 text-gray-700 px-3 py-2 rounded hover:bg-gray-200 flex items-center dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+                onClick={toggleAdvancedSearch}
+                className="bg-gray-200 text-gray-700 px-3 py-2 rounded hover:bg-gray-300 transition flex items-center dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
               >
                 <Filter className="h-4 w-4 mr-1" />
                 {showAdvancedSearch ? (
@@ -960,249 +827,236 @@ const BlockExplorer = () => {
                   <ChevronDown className="h-4 w-4" />
                 )}
               </button>
+              
+              {blockData && (
+                <button
+                  onClick={captureGraph}
+                  className="bg-indigo-600 text-white px-3 py-2 rounded hover:bg-indigo-700 transition flex items-center"
+                >
+                  <Camera className="h-4 w-4 mr-1" />
+                  Capture
+                </button>
+              )}
             </div>
-
-            {/* Search history dropdown */}
-            {showSearchHistory && recentSearches.length > 0 && (
-              <div
-                ref={searchHistoryRef}
-                className="absolute z-10 mt-1 w-full bg-white border rounded-md shadow-lg max-h-60 overflow-auto dark:bg-gray-700 dark:border-gray-600"
-              >
-                {recentSearches.map((search, index) => (
-                  <div
-                    key={index}
-                    className="p-2 text-sm cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 rounded-md flex items-center justify-between"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      handleSearchHistoryClick(search.query);
+          </div>
+          
+          {showAdvancedSearch && (
+            <div className="mt-2 p-3 border rounded-md bg-gray-50 dark:bg-gray-700 dark:border-gray-600">
+              <h3 className="text-sm font-medium mb-2">Advanced Search Options</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs mb-1">Start Block</label>
+                  <input
+                    type="number"
+                    name="startBlock"
+                    value={searchRange.startBlock}
+                    onChange={handleSearchRangeChange}
+                    placeholder="e.g., 15000000"
+                    className="w-full p-1.5 text-sm border rounded focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:bg-gray-800 dark:border-gray-600 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs mb-1">End Block</label>
+                  <input
+                    type="number"
+                    name="endBlock"
+                    value={searchRange.endBlock}
+                    onChange={handleSearchRangeChange}
+                    placeholder="e.g., 15001000"
+                    className="w-full p-1.5 text-sm border rounded focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:bg-gray-800 dark:border-gray-600 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs mb-1">Max Blocks</label>
+                  <input
+                    type="number"
+                    name="maxBlocks"
+                    value={searchRange.maxBlocks}
+                    onChange={handleSearchRangeChange}
+                    placeholder="Default: 1000"
+                    className="w-full p-1.5 text-sm border rounded focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:bg-gray-800 dark:border-gray-600 dark:text-white"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 mt-2 dark:text-gray-400">
+                Specify a block range to search. For address searches, this limits the blocks scanned for transactions.
+              </p>
+            </div>
+          )}
+        </div>
+        
+        {searchProgress.status !== 'idle' && (
+          <div className="mt-2 p-2 border rounded-md bg-gray-50 dark:bg-gray-700 dark:border-gray-600">
+            <div className="flex justify-between items-center mb-1">
+              <div className="flex items-center">
+                {searchProgress.status === 'searching' && (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-1 animate-spin text-indigo-600 dark:text-indigo-400" />
+                    <span className="text-sm font-medium">Searching...</span>
+                  </>
+                )}
+                {searchProgress.status === 'completed' && (
+                  <>
+                    <CheckCircle className="h-4 w-4 mr-1 text-green-600 dark:text-green-400" />
+                    <span className="text-sm font-medium">Search completed</span>
+                  </>
+                )}
+                {searchProgress.status === 'cancelled' && (
+                  <>
+                    <StopCircle className="h-4 w-4 mr-1 text-amber-600 dark:text-amber-400" />
+                    <span className="text-sm font-medium">Search cancelled</span>
+                  </>
+                )}
+                {searchProgress.status === 'error' && (
+                  <>
+                    <AlertTriangle className="h-4 w-4 mr-1 text-red-600 dark:text-red-400" />
+                    <span className="text-sm font-medium">Search error</span>
+                  </>
+                )}
+              </div>
+              
+              {searchProgress.status === 'searching' && (
+                <button
+                  onClick={cancelSearch}
+                  className="text-red-600 hover:text-red-800 text-sm flex items-center dark:text-red-400 dark:hover:text-red-300"
+                >
+                  <X className="h-4 w-4 mr-1" />
+                  Cancel
+                </button>
+              )}
+            </div>
+            
+            {searchProgress.status === 'searching' && (
+              <>
+                <div className="w-full bg-gray-200 rounded-full h-2.5 mb-1 dark:bg-gray-600">
+                  <div 
+                    className="bg-indigo-600 h-2.5 rounded-full dark:bg-indigo-500" 
+                    style={{ 
+                      width: `${searchProgress.blocksTotal > 0 
+                        ? Math.min(100, (searchProgress.blocksProcessed / searchProgress.blocksTotal) * 100) 
+                        : 0}%` 
                     }}
-                  >
-                    <div className="flex items-center overflow-hidden">
-                      {getSearchTypeIcon(search.type)}
-                      <span className="truncate">{search.query}</span>
-                    </div>
-                    <span className="text-xs text-gray-500 dark:text-gray-400 ml-2 whitespace-nowrap">
-                      {formatTimestamp(search.timestamp / 1000)}
-                    </span>
-                  </div>
-                ))}
+                  ></div>
+                </div>
+                
+                <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
+                  <span>
+                    {searchProgress.blocksProcessed} / {searchProgress.blocksTotal} blocks
+                  </span>
+                  <span>
+                    {searchProgress.transactionsFound} transactions found
+                  </span>
+                </div>
+                
+                {searchProgress.message && (
+                  <p className="text-xs text-gray-500 mt-1 dark:text-gray-400">
+                    {searchProgress.message}
+                  </p>
+                )}
+              </>
+            )}
+            
+            {searchProgress.status === 'completed' && (
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                Processed {searchProgress.blocksProcessed} blocks, found {searchProgress.transactionsFound} transactions
               </div>
             )}
           </div>
-
-          {/* Advanced search options */}
-          {showAdvancedSearch && (
-            <div className="mt-3 p-3 border rounded-md dark:border-gray-600">
-              <h3 className="text-sm font-medium mb-2">
-                Advanced Search Options
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
-                    Start Block (optional)
-                  </label>
-                  <input
-                    type="number"
-                    value={searchRange.startBlock}
-                    onChange={(e) =>
-                      setSearchRange({
-                        ...searchRange,
-                        startBlock: e.target.value,
-                      })
-                    }
-                    placeholder="e.g., 15000000"
-                    className="w-full p-1.5 text-sm border rounded focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
-                    End Block (optional)
-                  </label>
-                  <input
-                    type="number"
-                    value={searchRange.endBlock}
-                    onChange={(e) =>
-                      setSearchRange({
-                        ...searchRange,
-                        endBlock: e.target.value,
-                      })
-                    }
-                    placeholder="e.g., 15100000"
-                    className="w-full p-1.5 text-sm border rounded focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
-                    Max Blocks to Search
-                  </label>
-                  <input
-                    type="number"
-                    value={searchRange.maxBlocks}
-                    onChange={(e) =>
-                      setSearchRange({
-                        ...searchRange,
-                        maxBlocks: e.target.value,
-                      })
-                    }
-                    placeholder="Default: 5000"
-                    className="w-full p-1.5 text-sm border rounded focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                  />
-                </div>
-              </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                Note: For address searches, these options limit the block range
-                to search for transactions. If no range is specified, the most
-                recent {searchRange.maxBlocks} blocks will be searched.
-              </p>
-            </div>
-          )}
-
-          {/* Error message */}
-          {error && (
-            <div className="mt-4 p-3 bg-red-100 text-red-700 rounded flex items-start dark:bg-red-900 dark:text-red-200">
-              <AlertTriangle className="h-5 w-5 mr-2 flex-shrink-0 mt-0.5" />
-              <p>{error}</p>
-            </div>
-          )}
-
-          {/* Connection warning */}
-          {!isConnected && (
-            <div className="mt-4 p-3 bg-yellow-100 text-yellow-700 rounded flex items-start dark:bg-yellow-900 dark:text-yellow-200">
-              <AlertTriangle className="h-5 w-5 mr-2 flex-shrink-0 mt-0.5" />
-              <p>
-                Not connected to Ethereum network. Please check your connection
-                in Settings.
-              </p>
-            </div>
-          )}
-
-          {/* Search status message */}
-          {searchProgress.status === "completed" && (
-            <div className="mt-2 p-3 bg-green-50 rounded-md dark:bg-green-900/30">
-              <div className="text-sm font-medium text-green-700 dark:text-green-300 flex items-center">
-                <CheckCircle className="h-4 w-4 mr-2" />
-                Search completed: Found {searchProgress.transactionsFound}{" "}
-                transactions in {searchProgress.blocksProcessed} blocks
+        )}
+        
+        {error && (
+          <div className="mt-2 p-3 bg-red-100 text-red-700 rounded-md flex items-start dark:bg-red-900/50 dark:text-red-300">
+            <AlertTriangle className="h-5 w-5 mr-2 flex-shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+        
+        {blockData && (
+          <div className="mt-6">
+            <div className="border rounded-lg overflow-hidden dark:border-gray-600">
+              <div className="h-[500px]" ref={graphRef}>
+                <BlockGraph 
+                  data={blockData} 
+                  onNodeClick={handleNodeClick}
+                  onNodeDoubleClick={handleNodeDoubleClick}
+                />
               </div>
             </div>
-          )}
-
-          {searchProgress.status === "cancelled" && (
-            <div className="mt-2 p-3 bg-amber-50 rounded-md dark:bg-amber-900/30">
-              <div className="text-sm font-medium text-amber-700 dark:text-amber-300 flex items-center">
-                <StopCircle className="h-4 w-4 mr-2" />
-                Search cancelled: Found {searchProgress.transactionsFound}{" "}
-                transactions in {searchProgress.blocksProcessed} blocks
-              </div>
-            </div>
-          )}
-
-          {searchProgress.status === "error" && searchProgress.message && (
-            <div className="mt-2 p-3 bg-red-50 rounded-md dark:bg-red-900/30">
-              <div className="text-sm font-medium text-red-700 dark:text-red-300 flex items-center">
-                <AlertTriangle className="h-4 w-4 mr-2" />
-                Search error: {searchProgress.message}
-              </div>
-            </div>
-          )}
-
-          {searchProgress.status === "searching" && (
-            <div className="mt-2">
-              <div className="flex justify-between items-center mb-1">
-                <div className="text-sm font-medium flex items-center">
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  Searching blocks {searchProgress.blocksProcessed} /{" "}
-                  {searchProgress.blocksTotal}
-                </div>
-                <button
-                  onClick={cancelSearch}
-                  className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded hover:bg-red-200 dark:bg-red-900/50 dark:text-red-300 dark:hover:bg-red-900/70"
-                >
-                  Cancel
-                </button>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
-                <div
-                  className="bg-indigo-600 h-2.5 rounded-full dark:bg-indigo-500"
-                  style={{
-                    width: `${
-                      (searchProgress.blocksProcessed /
-                        searchProgress.blocksTotal) *
-                      100
-                    }%`,
-                  }}
-                ></div>
-              </div>
-              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                Found {searchProgress.transactionsFound} transactions so far
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Main Content Area */}
-        <div className="flex-grow min-h-0 p-4 flex flex-col space-y-4 overflow-auto">
-          {/* Graph Section */}
-          {blockData && (
-            <div className="flex flex-col space-y-4">
-              <div className="flex justify-between items-center">
-                <h2 className="text-lg font-medium">Block Graph</h2>
-                <div className="flex space-x-2">
-                  <button
-                    onClick={captureScreenshot}
-                    className="flex items-center px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
-                  >
-                    <Camera className="h-4 w-4 mr-1" />
-                    Capture
-                  </button>
-                  <button
-                    onClick={exportData}
-                    className="flex items-center px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
-                  >
-                    <Download className="h-4 w-4 mr-1" />
-                    Export JSON
-                  </button>
-                </div>
-              </div>
-
-              <div className="relative" ref={graphRef}>
-                <div className="h-[500px] border rounded-lg overflow-hidden dark:border-gray-600">
-                  <BlockGraph
-                    data={blockData}
-                    onNodeClick={handleNodeClick}
-                    onNodeDoubleClick={(node) => {
-                      if (node.type === "address" || node.type === "contract") {
-                        setSearchInput(node.id);
-                        handleSearch(node.id);
-                      } else if (node.type === "transaction" && node.hash) {
-                        setSearchInput(node.hash);
-                        handleSearch(node.hash);
-                      } else if (node.type === "block" && node.blockNumber) {
-                        setSearchInput(node.blockNumber.toString());
-                        handleSearch(node.blockNumber.toString());
-                      }
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* Details Panel - Now below the graph */}
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4">
-                {/* Node Details Panel */}
-                {selectedNodeDetails && (
-                  <div className="mb-4 p-4 border rounded-lg dark:border-gray-600 bg-white dark:bg-gray-800 shadow-lg">
-                    <h3 className="text-lg font-medium mb-2">Node Details</h3>
-                    <div className="space-y-2">{renderNodeDetails()}</div>
+            
+            {selectedNodeDetails && (
+              <div className="mt-4 p-4 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600">
+                <h3 className="text-lg font-medium mb-2">
+                  {selectedNodeDetails.type.charAt(0).toUpperCase() + selectedNodeDetails.type.slice(1)} Details
+                </h3>
+                
+                <div className="space-y-2">
+                  {selectedNodeDetails.type === 'address' || selectedNodeDetails.type === 'contract' ? (
+                    <>
+                      <div>
+                        <span className="font-medium">Address:</span> {selectedNodeDetails.id}
+                      </div>
+                      {selectedNodeDetails.role && (
+                        <div>
+                          <span className="font-medium">Role:</span> {selectedNodeDetails.role}
+                        </div>
+                      )}
+                    </>
+                  ) : selectedNodeDetails.type === 'transaction' ? (
+                    <>
+                      <div>
+                        <span className="font-medium">Hash:</span> {selectedNodeDetails.hash}
+                      </div>
+                      {selectedNodeDetails.blockNumber !== undefined && (
+                        <div>
+                          <span className="font-medium">Block:</span> {selectedNodeDetails.blockNumber}
+                        </div>
+                      )}
+                      {selectedNodeDetails.value && (
+                        <div>
+                          <span className="font-medium">Value:</span> {selectedNodeDetails.value} ETH
+                        </div>
+                      )}
+                      {selectedNodeDetails.timestamp && (
+                        <div>
+                          <span className="font-medium">Time:</span> {formatTimestamp(selectedNodeDetails.timestamp)}
+                        </div>
+                      )}
+                    </>
+                  ) : selectedNodeDetails.type === 'block' ? (
+                    <>
+                      <div>
+                        <span className="font-medium">Block Number:</span> {selectedNodeDetails.blockNumber}
+                      </div>
+                      {selectedNodeDetails.hash && (
+                        <div>
+                          <span className="font-medium">Hash:</span> {selectedNodeDetails.hash}
+                        </div>
+                      )}
+                      {selectedNodeDetails.timestamp && (
+                        <div>
+                          <span className="font-medium">Time:</span> {formatTimestamp(selectedNodeDetails.timestamp)}
+                        </div>
+                      )}
+                    </>
+                  ) : null}
+                  
+                  <div className="pt-2">
+                    <button
+                      onClick={() => handleNodeDoubleClick(selectedNodeDetails)}
+                      className="bg-indigo-600 text-white px-3 py-1 text-sm rounded hover:bg-indigo-700 transition"
+                    >
+                      Explore
+                    </button>
                   </div>
-                )}
-                {/* ... existing block details content ... */}
+                </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
 };
 
 export default BlockExplorer;
+

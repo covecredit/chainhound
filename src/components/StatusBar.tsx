@@ -99,7 +99,7 @@ const StatusBar = () => {
   };
   
   return (
-    <div className="bg-gray-100 border-t border-gray-200 py-1 text-xs text-gray-600 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300">
+    <div className="bg-gray-100 border-t border-gray-200 py-1 text-xs text-gray-600 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300 w-full">
       <div className="container mx-auto px-4">
         <div className="flex flex-wrap justify-between items-center">
           {/* First row - Provider information */}
