@@ -86,7 +86,7 @@ const BlockGraph: React.FC<BlockGraphProps> = ({ data, onNodeClick, onNodeDouble
       };
       
       const linkColors = {
-        send: '#9333ea', // purple (changed from red to purple to differentiate from address)
+        send: '#9333ea', // purple
         receive: '#10b981', // emerald
         interact: '#8b5cf6', // violet
       };
@@ -175,7 +175,6 @@ const BlockGraph: React.FC<BlockGraphProps> = ({ data, onNodeClick, onNodeDouble
         const nodeGroup = d3.select(this);
         
         if (d.type === 'address') {
-          // Add wallet icon
           nodeGroup.append('foreignObject')
             .attr('width', 20)
             .attr('height', 20)
@@ -187,7 +186,6 @@ const BlockGraph: React.FC<BlockGraphProps> = ({ data, onNodeClick, onNodeDouble
                   '<path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/>' +
                   '</svg></div>');
         } else if (d.type === 'contract') {
-          // Add cog icon
           nodeGroup.append('foreignObject')
             .attr('width', 20)
             .attr('height', 20)
@@ -199,7 +197,6 @@ const BlockGraph: React.FC<BlockGraphProps> = ({ data, onNodeClick, onNodeDouble
                   '<path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z"/><path d="M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/><path d="M12 2v2"/><path d="M12 22v-2"/><path d="m17 20.66-1-1.73"/><path d="M11 10.27 7 3.34"/><path d="m20.66 17-1.73-1"/><path d="m3.34 7 1.73 1"/><path d="M14 12h8"/><path d="M2 12h2"/><path d="m20.66 7-1.73 1"/><path d="m3.34 17 1.73-1"/><path d="m17 3.34-1 1.73"/><path d="m11 13.73-4 6.93"/>' +
                   '</svg></div>');
         } else if (d.type === 'transaction') {
-          // Add box icon
           nodeGroup.append('foreignObject')
             .attr('width', 20)
             .attr('height', 20)
@@ -211,7 +208,6 @@ const BlockGraph: React.FC<BlockGraphProps> = ({ data, onNodeClick, onNodeDouble
                   '<path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>' +
                   '</svg></div>');
         } else if (d.type === 'block') {
-          // Add cube icon
           nodeGroup.append('foreignObject')
             .attr('width', 20)
             .attr('height', 20)
@@ -265,7 +261,7 @@ const BlockGraph: React.FC<BlockGraphProps> = ({ data, onNodeClick, onNodeDouble
           return '';
         });
       
-      // Add gas info only to transaction-block links (not from sender to transaction)
+      // Add gas info only to transaction-block links
       link.each(function(d: any) {
         const linkElement = d3.select(this);
         const linkData = linkElement.datum() as any;
@@ -291,7 +287,7 @@ const BlockGraph: React.FC<BlockGraphProps> = ({ data, onNodeClick, onNodeDouble
         }
       });
       
-      // Add legend to bottom left of the graph
+      // Add legend
       const legendContainer = svg.append('g')
         .attr('class', 'legend')
         .attr('transform', `translate(20, ${height - 180})`);
@@ -717,5 +713,14 @@ const BlockGraph: React.FC<BlockGraphProps> = ({ data, onNodeClick, onNodeDouble
   return (
     <div ref={containerRef} className="w-full h-full relative">
       {errorMessage && (
-        <div className="absolute top-4 left-4 right-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded flex items-center dark:bg-red-900/50 dark:border-red-800 dark:text-red-300">
-          <AlertTriangle className="inline-block mr-2" size
+        <div className="absolute top-4 left-4 right-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded flex items-center dark:bg-red-900/50 dark:border-red-800 /50 dark:text-red-300">
+          <AlertTriangle className="inline-block mr-2" size={16} />
+          <span>{errorMessage}</span>
+        </div>
+      )}
+      <svg ref={svgRef} className="w-full h-full" />
+    </div>
+  );
+};
+
+export default BlockGraph;
