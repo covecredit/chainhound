@@ -862,9 +862,97 @@ const BlockExplorer = () => {
             {searchProgress.status === 'searching' && (
               <>
                 <div className="w-full bg-gray-200 rounded-full h-2.5 mb-1 dark:bg-gray-600">
-                  <div 
-                    className="bg-indigo-600 h-2.5 rounded-full dark:bg-indigo-500" 
+                  <div  className="bg-indigo-600 h-2.5 rounded-full dark:bg-indigo-500" 
                     style={{ 
                       width: `${searchProgress.blocksTotal > 0 
                         ? Math.min(100, (searchProgress.blocksProcessed / searchProgress.blocksTotal) * 100) 
                         : 0}%` 
+                    }}
+                  />
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span>
+                    {searchProgress.blocksProcessed.toLocaleString()} / {searchProgress.blocksTotal.toLocaleString()} blocks
+                  </span>
+                  <span>
+                    {searchProgress.transactionsFound.toLocaleString()} transactions found
+                  </span>
+                </div>
+              </>
+            )}
+            
+            {searchProgress.message && (
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                {searchProgress.message}
+              </p>
+            )}
+          </div>
+        )}
+        
+        {error && (
+          <div className="mt-4 p-3 bg-red-100 text-red-700 rounded flex items-start dark:bg-red-900 dark:text-red-200">
+            <AlertTriangle className="h-5 w-5 mr-2 flex-shrink-0 mt-0.5" />
+            <p>{error}</p>
+          </div>
+        )}
+        
+        {blockData && (
+          <div className="mt-6">
+            <div className="bg-gray-50 p-4 rounded-lg border dark:bg-gray-700 dark:border-gray-600">
+              <div ref={graphRef} className="w-full h-[600px]">
+                <BlockGraph 
+                  data={blockData}
+                  onNodeClick={handleNodeClick}
+                  onNodeDoubleClick={handleNodeDoubleClick}
+                />
+              </div>
+            </div>
+            
+            {selectedNodeDetails && (
+              <div className="mt-4 p-4 bg-white rounded-lg border dark:bg-gray-800 dark:border-gray-600">
+                <h3 className="text-lg font-medium mb-2">Selected Node Details</h3>
+                <div className="space-y-2">
+                  <p>
+                    <span className="font-medium">Type:</span> {selectedNodeDetails.type}
+                  </p>
+                  {selectedNodeDetails.id && (
+                    <p>
+                      <span className="font-medium">ID:</span> {selectedNodeDetails.id}
+                    </p>
+                  )}
+                  {selectedNodeDetails.hash && (
+                    <p>
+                      <span className="font-medium">Hash:</span> {selectedNodeDetails.hash}
+                    </p>
+                  )}
+                  {selectedNodeDetails.blockNumber !== undefined && (
+                    <p>
+                      <span className="font-medium">Block Number:</span> {selectedNodeDetails.blockNumber}
+                    </p>
+                  )}
+                  {selectedNodeDetails.value && (
+                    <p>
+                      <span className="font-medium">Value:</span> {selectedNodeDetails.value}
+                    </p>
+                  )}
+                  {selectedNodeDetails.timestamp && (
+                    <p>
+                      <span className="font-medium">Timestamp:</span> {formatTimestamp(selectedNodeDetails.timestamp)}
+                    </p>
+                  )}
+                  {selectedNodeDetails.role && (
+                    <p>
+                      <span className="font-medium">Role:</span> {selectedNodeDetails.role}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default BlockExplorer;
