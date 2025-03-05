@@ -453,7 +453,7 @@ const BlockExplorer = () => {
       
       let startBlock = 0;
       let endBlock = Number(await web3!.eth.getBlockNumber());
-      let maxBlocks = parseInt(searchRange.maxBlocks) || 1000;
+      let maxNewBlocks = parseInt(searchRange.maxBlocks) || 1000;
       
       if (showAdvancedSearch && searchRange.startBlock && searchRange.endBlock) {
         startBlock = Number(searchRange.startBlock);
@@ -462,29 +462,19 @@ const BlockExplorer = () => {
         if (startBlock > endBlock) {
           throw new Error("Start block must be less than or equal to end block");
         }
-        
-        if (endBlock - startBlock >= maxBlocks) {
-          endBlock = startBlock + maxBlocks - 1;
-        }
       } else {
-        startBlock = Math.max(0, endBlock - maxBlocks + 1);
+        startBlock = Math.max(0, endBlock - maxNewBlocks + 1);
       }
       
-      setSearchProgress({
-        status: "searching",
-        blocksProcessed: 0,
-        blocksTotal: endBlock - startBlock + 1,
-        transactionsFound: 0,
-        message: `Searching blocks ${startBlock} to ${endBlock}...`,
-      });
-      
+      // Get cached and error blocks in the range
       const cachedBlockNumbers = await blockCache.getCachedBlockNumbers(startBlock, endBlock);
-      console.log(`Found ${cachedBlockNumbers.length} cached blocks in range`);
-      
       const errorBlocks = await blockCache.getErrorBlocksInRange(startBlock, endBlock);
       const errorBlockNumbers = new Set(errorBlocks.map(b => b.blockNumber));
+      
+      console.log(`Found ${cachedBlockNumbers.length} cached blocks in range`);
       console.log(`Found ${errorBlocks.length} error blocks in range`);
       
+      // Calculate blocks that need to be fetched (not in cache and not in error blocks)
       const blocksToFetch = [];
       for (let i = startBlock; i <= endBlock; i++) {
         if (!cachedBlockNumbers.includes(i) && !errorBlockNumbers.has(i)) {
@@ -492,11 +482,29 @@ const BlockExplorer = () => {
         }
       }
       
+      // Limit the number of new blocks to fetch
+      if (blocksToFetch.length > maxNewBlocks) {
+        console.log(`Limiting new blocks to fetch from ${blocksToFetch.length} to ${maxNewBlocks}`);
+        blocksToFetch.length = maxNewBlocks;
+        endBlock = blocksToFetch[blocksToFetch.length - 1];
+      }
+      
       console.log(`Need to fetch ${blocksToFetch.length} new blocks`);
+      
+      const totalBlocksToProcess = cachedBlockNumbers.length + blocksToFetch.length;
+      
+      setSearchProgress({
+        status: "searching",
+        blocksProcessed: 0,
+        blocksTotal: totalBlocksToProcess,
+        transactionsFound: 0,
+        message: `Searching blocks ${startBlock} to ${endBlock}...`,
+      });
       
       const transactions: Transaction[] = [];
       let processedBlocks = 0;
       
+      // Process cached blocks first (no limit on these)
       for (const blockNumber of cachedBlockNumbers) {
         if (searchCancelRef.current) break;
         
@@ -523,13 +531,13 @@ const BlockExplorer = () => {
             ...prev,
             blocksProcessed: processedBlocks,
             transactionsFound: transactions.length,
-            message: `Processed ${processedBlocks} of ${cachedBlockNumbers.length + blocksToFetch.length} blocks...`,
+            message: `Processed ${processedBlocks} of ${totalBlocksToProcess} blocks...`,
           }));
         }
       }
       
+      // Process new blocks in batches
       const batchSize = 10;
-      
       for (let i = 0; i < blocksToFetch.length; i += batchSize) {
         if (searchCancelRef.current) break;
         
@@ -538,7 +546,6 @@ const BlockExplorer = () => {
         const blockPromises = batch.map(async (blockNumber) => {
           try {
             const fetchedBlock = await web3!.eth.getBlock(blockNumber, true);
-            
             const safeBlock = safelyConvertBigIntToString(fetchedBlock);
             
             if (safeBlock) {
@@ -582,10 +589,11 @@ const BlockExplorer = () => {
           ...prev,
           blocksProcessed: processedBlocks,
           transactionsFound: transactions.length,
-          message: `Processed ${processedBlocks} of ${cachedBlockNumbers.length + blocksToFetch.length} blocks...`,
+          message: `Processed ${processedBlocks} of ${totalBlocksToProcess} blocks...`,
         }));
       }
       
+      // Check contract interactions
       for (const tx of transactions) {
         if (tx.from?.toLowerCase() === address.toLowerCase()) {
           if (tx.to) {
@@ -599,6 +607,7 @@ const BlockExplorer = () => {
         }
       }
       
+      // Sort transactions by block number (descending)
       transactions.sort((a, b) => {
         const blockA = Number(a.blockNumber);
         const blockB = Number(b.blockNumber);
@@ -622,7 +631,7 @@ const BlockExplorer = () => {
       setSearchProgress({
         status: "completed",
         blocksProcessed: processedBlocks,
-        blocksTotal: cachedBlockNumbers.length + blocksToFetch.length,
+        blocksTotal: totalBlocksToProcess,
         transactionsFound: safeTransactions.length,
       });
       
@@ -851,7 +860,7 @@ const BlockExplorer = () => {
               {searchProgress.status === 'searching' && (
                 <button
                   onClick={cancelSearch}
-                  className="text-red-600 hover:text-red-800 text-sm flex items-center dark:text-red-400 dark:hover:text-red-300"
+                  className="text-red-600 hover:text-re d-800 text-sm flex items-center dark:text-red-400 dark:hover:text-red-300"
                 >
                   <X className="h-4 w-4 mr-1" />
                   Cancel
@@ -956,5 +965,3 @@ const BlockExplorer = () => {
 };
 
 export default BlockExplorer;
-
-export default BlockExplorer
