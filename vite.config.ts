@@ -2,7 +2,6 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { resolve } from "path";
 
-// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
   optimizeDeps: {
@@ -32,21 +31,6 @@ export default defineConfig({
     hmr: {
       host: '0.0.0.0',
       protocol: 'ws'
-    },
-    headers: {
-      'Content-Type': 'application/javascript',
-      'Cache-Control': 'no-cache, no-store, must-revalidate',
-      'Access-Control-Allow-Origin': '*'
-    }
-  },
-  preview: {
-    host: '0.0.0.0',
-    port: 3000,
-    open: false,
-    headers: {
-      'Content-Type': 'application/javascript',
-      'Cache-Control': 'no-cache, no-store, must-revalidate',
-      'Access-Control-Allow-Origin': '*'
     }
   }
 });
