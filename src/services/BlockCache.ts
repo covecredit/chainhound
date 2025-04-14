@@ -91,6 +91,15 @@ class BlockCache {
           console.log(
             `Block ${block.number} already cached with equal or more data, skipping...`
           );
+
+          // Update last processed block even if we're skipping this block
+          if (
+            this.lastProcessedBlock === null ||
+            block.number > this.lastProcessedBlock
+          ) {
+            this.lastProcessedBlock = block.number;
+          }
+
           return;
         }
         console.log(`Updating cached block ${block.number} with new data...`);

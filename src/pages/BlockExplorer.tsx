@@ -45,6 +45,7 @@ interface Transaction {
   gasUsed?: string | number;
   timestamp?: number;
   _isContractCall?: boolean;
+  contractAddress?: string;
 }
 
 interface Block {
@@ -497,45 +498,39 @@ const BlockExplorer = () => {
       console.log(`Found ${errorBlocks.length} error blocks in range`);
 
       // Calculate blocks that need to be fetched (not in cache and not in error blocks)
-      const blocksToFetch = [];
+      const blocksToFetch: number[] = [];
       for (let i = startBlock; i <= endBlock; i++) {
         if (!cachedBlockNumbers.includes(i) && !errorBlockNumbers.has(i)) {
           blocksToFetch.push(i);
         }
       }
 
-      // We no longer limit the number of new blocks to fetch
-      // This allows the cache to grow continuously with each search
       console.log(`Need to fetch ${blocksToFetch.length} new blocks`);
 
-      // The total blocks to process is the sum of cached blocks and blocks to fetch
-      const totalBlocksToProcess =
-        cachedBlockNumbers.length + blocksToFetch.length;
-
-      setSearchProgress({
-        status: "searching",
-        blocksProcessed: 0,
+      // Set the total blocks to process to only include new blocks that need fetching
+      const totalBlocksToProcess = blocksToFetch.length;
+      setSearchProgress((prev) => ({
+        ...prev,
         blocksTotal: totalBlocksToProcess,
-        transactionsFound: 0,
-        message: `Searching blocks ${startBlock} to ${endBlock}...`,
-      });
+        message: `Found ${cachedBlockNumbers.length} cached blocks, fetching ${totalBlocksToProcess} new blocks...`,
+      }));
 
       const transactions: Transaction[] = [];
-      let processedBlocks = 0;
+      let newBlocksProcessed = 0;
 
-      // Process cached blocks first (no limit on these)
+      // Process cached blocks first (these don't count towards progress)
       for (const blockNumber of cachedBlockNumbers) {
         if (searchCancelRef.current) break;
 
         const block = await blockCache.getBlock(blockNumber);
         if (block && block.transactions) {
           const relevantTxs = block.transactions.filter(
-            (tx) =>
+            (tx: Transaction) =>
               tx.from?.toLowerCase() === address.toLowerCase() ||
               tx.to?.toLowerCase() === address.toLowerCase()
           );
 
-          const txsWithTimestamp = relevantTxs.map((tx) => ({
+          const txsWithTimestamp = relevantTxs.map((tx: Transaction) => ({
             ...tx,
             timestamp: block.timestamp,
             blockNumber: block.number,
@@ -543,110 +538,83 @@ const BlockExplorer = () => {
 
           transactions.push(...txsWithTimestamp);
         }
-
-        processedBlocks++;
-
-        if (processedBlocks % 10 === 0) {
-          setSearchProgress((prev) => ({
-            ...prev,
-            blocksProcessed: processedBlocks,
-            transactionsFound: transactions.length,
-            message: `Processed ${processedBlocks} of ${totalBlocksToProcess} blocks...`,
-          }));
-        }
       }
 
-      // Process new blocks in batches
+      // Process blocks in batches
       const batchSize = 10;
       for (let i = 0; i < blocksToFetch.length; i += batchSize) {
         if (searchCancelRef.current) break;
 
         const batch = blocksToFetch.slice(i, i + batchSize);
+        const batchPromises = batch.map(async (blockNumber) => {
+          try {
+            // First check if the block is in the cache
+            let block = await blockCache.getBlock(blockNumber);
+            let wasFetchedFromNetwork = false;
 
-        // Double-check if any blocks in this batch are already in the cache
-        const blocksToActuallyFetch = [];
-        for (const blockNumber of batch) {
-          const isInCache = await blockCache.getBlock(blockNumber);
-          if (!isInCache) {
-            blocksToActuallyFetch.push(blockNumber);
-          } else {
-            // If it's in the cache, process it directly
-            if (isInCache.transactions) {
-              const relevantTxs = isInCache.transactions.filter(
-                (tx: any) =>
-                  tx.from?.toLowerCase() === address.toLowerCase() ||
-                  tx.to?.toLowerCase() === address.toLowerCase()
-              );
-
-              const txsWithTimestamp = relevantTxs.map((tx: any) => ({
-                ...tx,
-                timestamp: isInCache.timestamp,
-                blockNumber: isInCache.number,
-              }));
-
-              transactions.push(...txsWithTimestamp);
-            }
-            processedBlocks++;
-          }
-        }
-
-        // Only fetch blocks that aren't in the cache
-        if (blocksToActuallyFetch.length > 0) {
-          const blockPromises = blocksToActuallyFetch.map(
-            async (blockNumber) => {
-              try {
-                const fetchedBlock = await web3!.eth.getBlock(
-                  blockNumber,
-                  true
-                );
-                const safeBlock = safelyConvertBigIntToString(fetchedBlock);
-
-                if (safeBlock) {
-                  await blockCache.cacheBlock(safeBlock);
-                  return safeBlock;
-                }
-                return null;
-              } catch (error) {
-                console.error(`Error fetching block ${blockNumber}:`, error);
-                await blockCache.recordErrorBlock(
-                  blockNumber,
-                  "fetch_error",
-                  error instanceof Error ? error.message : "Unknown error"
-                );
-                return null;
+            // If not in cache, fetch it from the network
+            if (!block) {
+              console.log(`Fetching block ${blockNumber} from network`);
+              const fetchedBlock = await web3!.eth.getBlock(blockNumber, true);
+              if (fetchedBlock) {
+                const safeBlock = safelyConvertBigIntToString(
+                  fetchedBlock
+                ) as Block;
+                // Cache the block for future use
+                await blockCache.cacheBlock(safeBlock);
+                block = safeBlock;
+                wasFetchedFromNetwork = true;
               }
+            } else {
+              console.log(`Block ${blockNumber} found in cache`);
             }
-          );
 
-          const blocks = await Promise.all(blockPromises);
-
-          for (const block of blocks) {
-            if (block && block.transactions) {
-              const relevantTxs = block.transactions.filter(
-                (tx: any) =>
-                  tx.from?.toLowerCase() === address.toLowerCase() ||
-                  tx.to?.toLowerCase() === address.toLowerCase()
-              );
-
-              const txsWithTimestamp = relevantTxs.map((tx: any) => ({
-                ...tx,
-                timestamp: block.timestamp,
-                blockNumber: block.number,
-              }));
-
-              transactions.push(...txsWithTimestamp);
+            if (block) {
+              if (wasFetchedFromNetwork) {
+                newBlocksProcessed++;
+                setSearchProgress((prev) => ({
+                  ...prev,
+                  blocksProcessed: newBlocksProcessed,
+                  transactionsFound: transactions.length,
+                  message: `Processed ${newBlocksProcessed} of ${totalBlocksToProcess} new blocks...`,
+                }));
+              }
+              return block;
             }
+          } catch (error) {
+            console.error(`Error fetching block ${blockNumber}:`, error);
+            // Record the error block to avoid retrying it in future searches
+            await blockCache.recordErrorBlock(
+              blockNumber,
+              "fetch_error",
+              error instanceof Error ? error.message : "Unknown error"
+            );
           }
+          return null;
+        });
 
-          processedBlocks += blocksToActuallyFetch.length;
+        const batchResults = await Promise.all(batchPromises);
+        const validBlocks = batchResults.filter(
+          (block): block is Block => block !== null
+        );
+
+        for (const block of validBlocks) {
+          if (block.transactions) {
+            const relevantTxs = block.transactions.filter(
+              (tx: Transaction) =>
+                tx.from?.toLowerCase() === address.toLowerCase() ||
+                tx.to?.toLowerCase() === address.toLowerCase()
+            );
+
+            const txsWithTimestamp = relevantTxs.map((tx: Transaction) => ({
+              ...tx,
+              timestamp: block.timestamp,
+              blockNumber: block.number,
+            }));
+
+            transactions.push(...txsWithTimestamp);
+          }
         }
-
-        setSearchProgress((prev) => ({
-          ...prev,
-          blocksProcessed: processedBlocks,
-          transactionsFound: transactions.length,
-          message: `Processed ${processedBlocks} of ${totalBlocksToProcess} blocks...`,
-        }));
       }
 
       // Check contract interactions
@@ -670,7 +638,9 @@ const BlockExplorer = () => {
         return blockB - blockA;
       });
 
-      const safeTransactions = safelyConvertBigIntToString(transactions);
+      const safeTransactions = safelyConvertBigIntToString(
+        transactions
+      ) as Transaction[];
 
       setBlockData({
         type: "address",
@@ -686,7 +656,7 @@ const BlockExplorer = () => {
 
       setSearchProgress({
         status: "completed",
-        blocksProcessed: processedBlocks,
+        blocksProcessed: newBlocksProcessed,
         blocksTotal: totalBlocksToProcess,
         transactionsFound: safeTransactions.length,
       });
