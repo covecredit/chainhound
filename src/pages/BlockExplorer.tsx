@@ -491,9 +491,8 @@ const BlockExplorer = () => {
       console.log(`Initial search range: ${startBlock} to ${endBlock}`);
 
       // Get all cached blocks to avoid searching them again
-      const allCachedBlocks = await blockCache.getCachedBlockNumbers(
-        0,
-        latestBlockNumber
+      let allCachedBlocks = new Set(
+        await blockCache.getCachedBlockNumbers(0, latestBlockNumber)
       );
       const allErrorBlocks = await blockCache.getErrorBlocksInRange(
         0,
@@ -503,7 +502,16 @@ const BlockExplorer = () => {
         allErrorBlocks.map((b) => b.blockNumber)
       );
 
-      console.log(`Total cached blocks: ${allCachedBlocks.length}`);
+      // Add debug: print cached blocks in the current search range
+      const cachedInRange = await blockCache.getCachedBlockNumbers(
+        startBlock,
+        endBlock
+      );
+      console.log(
+        `Cached blocks in range ${startBlock}-${endBlock}:`,
+        cachedInRange
+      );
+      console.log(`Total cached blocks: ${allCachedBlocks.size}`);
       console.log(`Total error blocks: ${allErrorBlocks.length}`);
 
       // Initialize variables for tracking blocks
@@ -520,8 +528,28 @@ const BlockExplorer = () => {
       setSearchProgress((prev) => ({
         ...prev,
         blocksTotal: totalBlocksToProcess,
-        message: `Found ${allCachedBlocks.length} cached blocks, fetching ${totalBlocksToProcess} new blocks...`,
+        message: `Found ${cachedInRange.length} cached blocks, fetching ${totalBlocksToProcess} new blocks...`,
       }));
+
+      // Helper to find the next uncached block range
+      async function findNextUncachedBlocks(
+        start: number,
+        end: number,
+        count: number
+      ) {
+        // Always refresh the cache set for the current range
+        const cachedBlockNums = new Set(
+          await blockCache.getCachedBlockNumbers(start, end)
+        );
+        let uncached: number[] = [];
+        for (let i = end; i >= start; i--) {
+          if (!cachedBlockNums.has(i) && !errorBlockNumbers.has(i)) {
+            uncached.push(i);
+            if (uncached.length === count) break;
+          }
+        }
+        return uncached.reverse();
+      }
 
       // Continue searching until we've found enough new blocks or reached the maximum search ranges
       while (
@@ -529,66 +557,75 @@ const BlockExplorer = () => {
         searchRangeCount < maxSearchRanges
       ) {
         searchRangeCount++;
-
-        // Find blocks in the current range that are not in the cache
-        const blocksToFetch: number[] = [];
-        for (let i = currentStartBlock; i <= currentEndBlock; i++) {
-          if (!allCachedBlocks.includes(i) && !errorBlockNumbers.has(i)) {
-            blocksToFetch.push(i);
+        let remainingNewBlocks = totalBlocksToProcess - newBlocksProcessed;
+        let blocksToFetch: number[] = [];
+        let scanStart = currentStartBlock;
+        let scanEnd = currentEndBlock;
+        // Keep looking for uncached blocks until we have enough for this batch or run out of range
+        while (
+          blocksToFetch.length < remainingNewBlocks &&
+          scanEnd >= 0 &&
+          scanStart <= scanEnd
+        ) {
+          const needed = remainingNewBlocks - blocksToFetch.length;
+          const found = await findNextUncachedBlocks(
+            scanStart,
+            scanEnd,
+            needed
+          );
+          blocksToFetch.push(...found);
+          if (blocksToFetch.length < remainingNewBlocks) {
+            // Move window to earlier blocks
+            scanEnd = scanStart - 1;
+            scanStart = Math.max(0, scanEnd - maxNewBlocks + 1);
+          } else {
+            break;
           }
         }
-
+        if (blocksToFetch.length === 0) {
+          // No more uncached blocks to fetch
+          break;
+        }
         console.log(
-          `Searching range ${currentStartBlock} to ${currentEndBlock}, found ${blocksToFetch.length} new blocks to fetch`
+          `Searching blocks ${blocksToFetch[0]} to ${
+            blocksToFetch[blocksToFetch.length - 1]
+          }, found ${blocksToFetch.length} new blocks to fetch`
         );
-
         // Process blocks in batches
         const batchSize = 10;
         for (let i = 0; i < blocksToFetch.length; i += batchSize) {
           if (searchCancelRef.current) break;
-
           const batch = blocksToFetch.slice(i, i + batchSize);
           const batchPromises = batch.map(async (blockNumber) => {
             try {
-              // First check if the block is in the cache
               let block = await blockCache.getBlock(blockNumber);
-
               if (block) {
-                // Block is already in the cache
-                console.log(`Block ${blockNumber} found in cache`);
                 blocksFoundInCache++;
-                return block;
+                return null;
               }
-
               // Block is not in the cache, fetch it from the network
               console.log(`Fetching block ${blockNumber} from network`);
               const fetchedBlock = await web3!.eth.getBlock(blockNumber, true);
-
               if (fetchedBlock) {
                 const safeBlock = safelyConvertBigIntToString(
                   fetchedBlock
                 ) as Block;
-
-                // Cache the block for future use
                 await blockCache.cacheBlock(safeBlock);
-
-                // Count this as a new block added to the cache
                 newBlocksProcessed++;
-
                 setSearchProgress((prev) => ({
                   ...prev,
                   blocksProcessed: newBlocksProcessed,
                   transactionsFound: transactions.length,
-                  message: `Added ${newBlocksProcessed} new blocks to cache, ${
+                  message: `Added ${newBlocksProcessed} new blocks to cache, found ${
+                    cachedInRange.length
+                  } blocks in cache, ${
                     totalBlocksToProcess - newBlocksProcessed
                   } remaining...`,
                 }));
-
                 return safeBlock;
               }
             } catch (error) {
               console.error(`Error fetching block ${blockNumber}:`, error);
-              // Record the error block to avoid retrying it in future searches
               await blockCache.recordErrorBlock(
                 blockNumber,
                 "fetch_error",
@@ -597,12 +634,10 @@ const BlockExplorer = () => {
             }
             return null;
           });
-
           const batchResults = await Promise.all(batchPromises);
           const validBlocks = batchResults.filter(
             (block): block is Block => block !== null
           );
-
           for (const block of validBlocks) {
             if (block.transactions) {
               const relevantTxs = block.transactions.filter(
@@ -610,31 +645,18 @@ const BlockExplorer = () => {
                   tx.from?.toLowerCase() === address.toLowerCase() ||
                   tx.to?.toLowerCase() === address.toLowerCase()
               );
-
               const txsWithTimestamp = relevantTxs.map((tx: Transaction) => ({
                 ...tx,
                 timestamp: block.timestamp,
                 blockNumber: block.number,
               }));
-
               transactions.push(...txsWithTimestamp);
             }
           }
         }
-
-        // If we've found enough new blocks, stop searching
-        if (newBlocksProcessed >= totalBlocksToProcess) {
-          break;
-        }
-
-        // Move to the previous range
-        currentEndBlock = currentStartBlock - 1;
+        // Update current window for next outer loop
+        currentEndBlock = scanStart - 1;
         currentStartBlock = Math.max(0, currentEndBlock - maxNewBlocks + 1);
-
-        // If we've reached the beginning of the blockchain, stop searching
-        if (currentStartBlock === 0) {
-          break;
-        }
       }
 
       // Check contract interactions
@@ -674,12 +696,13 @@ const BlockExplorer = () => {
         id: address,
       });
 
+      // Update the final search progress with accurate counts
       setSearchProgress({
         status: "completed",
         blocksProcessed: newBlocksProcessed,
         blocksTotal: totalBlocksToProcess,
         transactionsFound: safeTransactions.length,
-        message: `Search completed. Added ${newBlocksProcessed} new blocks to cache, found ${blocksFoundInCache} blocks in cache, found ${safeTransactions.length} transactions.`,
+        message: `Search completed. Added ${newBlocksProcessed} new blocks to cache, found ${cachedInRange.length} blocks in cache, found ${safeTransactions.length} transactions.`,
       });
 
       if (safeTransactions.length === 0) {

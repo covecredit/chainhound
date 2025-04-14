@@ -200,15 +200,39 @@ class BlockCache {
       const db = await this.dbPromise;
       const tx = db.transaction(this.STORE_NAME, "readonly");
       const index = tx.store.index("number");
-      const range = IDBKeyRange.bound(startBlock, endBlock);
+      // Convert to string for key range if keys are stored as strings
+      const startKey = String(startBlock);
+      const endKey = String(endBlock);
+      const range = IDBKeyRange.bound(startKey, endKey);
 
-      // Get all block numbers in range
+      // Try to get all block numbers in range using the index
       const blockNumbers: number[] = [];
       let cursor = await index.openCursor(range);
-
       while (cursor) {
-        blockNumbers.push(cursor.value.number);
+        // Convert to number for return value
+        blockNumbers.push(Number(cursor.value.number));
         cursor = await cursor.continue();
+      }
+
+      // Debug: print all keys in the store
+      const allKeys = await tx.store.getAllKeys();
+      console.log(`[BlockCache Debug] All block keys in store:`, allKeys);
+      if (blockNumbers.length === 0 && allKeys.length > 0) {
+        // Fallback: iterate all blocks and filter by number (string compare)
+        const allBlocks = await tx.store.getAll();
+        const filtered = allBlocks
+          .filter(
+            (b) =>
+              typeof b.number !== "undefined" &&
+              String(b.number) >= startKey &&
+              String(b.number) <= endKey
+          )
+          .map((b) => Number(b.number));
+        console.log(
+          `[BlockCache Debug] Fallback found ${filtered.length} blocks in range ${startBlock}-${endBlock}`
+        );
+        filtered.sort((a, b) => a - b);
+        return filtered;
       }
 
       // Sort block numbers
