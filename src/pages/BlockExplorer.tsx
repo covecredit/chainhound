@@ -178,6 +178,14 @@ const BlockExplorer = () => {
     };
   }, [searchHistory, currentSearchIndex, searchProgress.status]);
 
+  const sanitizeSearchInput = (input: string) => {
+    // Remove leading/trailing whitespace and trailing non-alphanumeric characters (except 0x for hex)
+    let trimmed = input.trim();
+    // Remove trailing non-alphanumeric (except for valid hex chars)
+    trimmed = trimmed.replace(/[^a-zA-Z0-9]+$/, "");
+    return trimmed;
+  };
+
   const determineSearchType = (
     query: string
   ): "address" | "transaction" | "block" | "unknown" => {
@@ -234,8 +242,9 @@ const BlockExplorer = () => {
   };
 
   const handleSearch = async (query?: string) => {
-    const searchQuery = query || searchInput;
-    if (!searchQuery.trim()) return;
+    let searchQuery = query || searchInput;
+    searchQuery = sanitizeSearchInput(searchQuery);
+    if (!searchQuery) return;
 
     if (!isConnected || !web3) {
       setError(
@@ -731,14 +740,17 @@ const BlockExplorer = () => {
 
   const handleNodeDoubleClick = (node: NodeDetails) => {
     if (node.type === "address" || node.type === "contract") {
-      setSearchInput(node.id || "");
-      handleSearch(node.id);
+      const sanitized = sanitizeSearchInput(node.id || "");
+      setSearchInput(sanitized);
+      handleSearch(sanitized);
     } else if (node.type === "transaction" && node.hash) {
-      setSearchInput(node.hash);
-      handleSearch(node.hash);
+      const sanitized = sanitizeSearchInput(node.hash);
+      setSearchInput(sanitized);
+      handleSearch(sanitized);
     } else if (node.type === "block" && node.blockNumber !== undefined) {
-      setSearchInput(node.blockNumber.toString());
-      handleSearch(node.blockNumber.toString());
+      const sanitized = sanitizeSearchInput(node.blockNumber.toString());
+      setSearchInput(sanitized);
+      handleSearch(sanitized);
     }
   };
 
@@ -783,7 +795,7 @@ const BlockExplorer = () => {
                   id="search-input"
                   type="text"
                   value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
+                  onChange={(e) => setSearchInput(sanitizeSearchInput(e.target.value))}
                   onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                   placeholder="Enter block number, transaction hash, or address..."
                   className="w-full p-2 pr-10 border rounded-l focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:bg-gray-700 dark:border-gray-600 dark:text-white"
@@ -817,8 +829,9 @@ const BlockExplorer = () => {
                           key={index}
                           className="px-3 py-2 hover:bg-gray-100 cursor-pointer dark:hover:bg-gray-600"
                           onClick={() => {
-                            setSearchInput(query);
-                            handleSearch(query);
+                            const sanitized = sanitizeSearchInput(query);
+                            setSearchInput(sanitized);
+                            handleSearch(sanitized);
                             setShowSearchHistory(false);
                           }}
                         >
