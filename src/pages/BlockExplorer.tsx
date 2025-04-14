@@ -461,8 +461,12 @@ const BlockExplorer = () => {
         message: "Searching for transactions...",
       });
 
+      // Get the latest block number
+      const latestBlockNumber = Number(await web3!.eth.getBlockNumber());
+
+      // Determine the initial block range to search
       let startBlock = 0;
-      let endBlock = Number(await web3!.eth.getBlockNumber());
+      let endBlock = latestBlockNumber;
       let maxNewBlocks = parseInt(searchRange.maxBlocks) || 1000;
 
       if (
@@ -479,141 +483,157 @@ const BlockExplorer = () => {
           );
         }
       } else {
-        // Always search for the requested number of blocks, regardless of what's in the cache
+        // Start from the most recent blocks
+        endBlock = latestBlockNumber;
         startBlock = Math.max(0, endBlock - maxNewBlocks + 1);
       }
 
-      // Get cached and error blocks in the range
-      const cachedBlockNumbers = await blockCache.getCachedBlockNumbers(
-        startBlock,
-        endBlock
+      console.log(`Initial search range: ${startBlock} to ${endBlock}`);
+
+      // Get all cached blocks to avoid searching them again
+      const allCachedBlocks = await blockCache.getCachedBlockNumbers(
+        0,
+        latestBlockNumber
       );
-      const errorBlocks = await blockCache.getErrorBlocksInRange(
-        startBlock,
-        endBlock
+      const allErrorBlocks = await blockCache.getErrorBlocksInRange(
+        0,
+        latestBlockNumber
       );
-      const errorBlockNumbers = new Set(errorBlocks.map((b) => b.blockNumber));
+      const errorBlockNumbers = new Set(
+        allErrorBlocks.map((b) => b.blockNumber)
+      );
 
-      console.log(`Found ${cachedBlockNumbers.length} cached blocks in range`);
-      console.log(`Found ${errorBlocks.length} error blocks in range`);
+      console.log(`Total cached blocks: ${allCachedBlocks.length}`);
+      console.log(`Total error blocks: ${allErrorBlocks.length}`);
 
-      // Calculate blocks that need to be fetched (not in cache and not in error blocks)
-      const blocksToFetch: number[] = [];
-      for (let i = startBlock; i <= endBlock; i++) {
-        if (!cachedBlockNumbers.includes(i) && !errorBlockNumbers.has(i)) {
-          blocksToFetch.push(i);
-        }
-      }
+      // Initialize variables for tracking blocks
+      const transactions: Transaction[] = [];
+      let newBlocksProcessed = 0;
+      let blocksFoundInCache = 0;
+      let currentStartBlock = startBlock;
+      let currentEndBlock = endBlock;
+      let searchRangeCount = 0;
+      const maxSearchRanges = 100; // Increase the limit to allow for more ranges to be searched
 
-      console.log(`Need to fetch ${blocksToFetch.length} new blocks`);
-
-      // Set the total blocks to process to only include new blocks that need fetching
-      const totalBlocksToProcess = blocksToFetch.length;
+      // Set the total blocks to process - this is the number of new blocks we want to fetch
+      const totalBlocksToProcess = maxNewBlocks;
       setSearchProgress((prev) => ({
         ...prev,
         blocksTotal: totalBlocksToProcess,
-        message: `Found ${cachedBlockNumbers.length} cached blocks, fetching ${totalBlocksToProcess} new blocks...`,
+        message: `Found ${allCachedBlocks.length} cached blocks, fetching ${totalBlocksToProcess} new blocks...`,
       }));
 
-      const transactions: Transaction[] = [];
-      let newBlocksProcessed = 0;
+      // Continue searching until we've found enough new blocks or reached the maximum search ranges
+      while (
+        newBlocksProcessed < totalBlocksToProcess &&
+        searchRangeCount < maxSearchRanges
+      ) {
+        searchRangeCount++;
 
-      // Process cached blocks first (these don't count towards progress)
-      for (const blockNumber of cachedBlockNumbers) {
-        if (searchCancelRef.current) break;
-
-        const block = await blockCache.getBlock(blockNumber);
-        if (block && block.transactions) {
-          const relevantTxs = block.transactions.filter(
-            (tx: Transaction) =>
-              tx.from?.toLowerCase() === address.toLowerCase() ||
-              tx.to?.toLowerCase() === address.toLowerCase()
-          );
-
-          const txsWithTimestamp = relevantTxs.map((tx: Transaction) => ({
-            ...tx,
-            timestamp: block.timestamp,
-            blockNumber: block.number,
-          }));
-
-          transactions.push(...txsWithTimestamp);
+        // Find blocks in the current range that are not in the cache
+        const blocksToFetch: number[] = [];
+        for (let i = currentStartBlock; i <= currentEndBlock; i++) {
+          if (!allCachedBlocks.includes(i) && !errorBlockNumbers.has(i)) {
+            blocksToFetch.push(i);
+          }
         }
-      }
 
-      // Process blocks in batches
-      const batchSize = 10;
-      for (let i = 0; i < blocksToFetch.length; i += batchSize) {
-        if (searchCancelRef.current) break;
+        console.log(
+          `Searching range ${currentStartBlock} to ${currentEndBlock}, found ${blocksToFetch.length} new blocks to fetch`
+        );
 
-        const batch = blocksToFetch.slice(i, i + batchSize);
-        const batchPromises = batch.map(async (blockNumber) => {
-          try {
-            // First check if the block is in the cache
-            let block = await blockCache.getBlock(blockNumber);
-            let wasFetchedFromNetwork = false;
+        // Process blocks in batches
+        const batchSize = 10;
+        for (let i = 0; i < blocksToFetch.length; i += batchSize) {
+          if (searchCancelRef.current) break;
 
-            // If not in cache, fetch it from the network
-            if (!block) {
+          const batch = blocksToFetch.slice(i, i + batchSize);
+          const batchPromises = batch.map(async (blockNumber) => {
+            try {
+              // First check if the block is in the cache
+              let block = await blockCache.getBlock(blockNumber);
+
+              if (block) {
+                // Block is already in the cache
+                console.log(`Block ${blockNumber} found in cache`);
+                blocksFoundInCache++;
+                return block;
+              }
+
+              // Block is not in the cache, fetch it from the network
               console.log(`Fetching block ${blockNumber} from network`);
               const fetchedBlock = await web3!.eth.getBlock(blockNumber, true);
+
               if (fetchedBlock) {
                 const safeBlock = safelyConvertBigIntToString(
                   fetchedBlock
                 ) as Block;
+
                 // Cache the block for future use
                 await blockCache.cacheBlock(safeBlock);
-                block = safeBlock;
-                wasFetchedFromNetwork = true;
-              }
-            } else {
-              console.log(`Block ${blockNumber} found in cache`);
-            }
 
-            if (block) {
-              if (wasFetchedFromNetwork) {
+                // Count this as a new block added to the cache
                 newBlocksProcessed++;
+
                 setSearchProgress((prev) => ({
                   ...prev,
                   blocksProcessed: newBlocksProcessed,
                   transactionsFound: transactions.length,
-                  message: `Processed ${newBlocksProcessed} of ${totalBlocksToProcess} new blocks...`,
+                  message: `Added ${newBlocksProcessed} new blocks to cache, ${
+                    totalBlocksToProcess - newBlocksProcessed
+                  } remaining...`,
                 }));
+
+                return safeBlock;
               }
-              return block;
+            } catch (error) {
+              console.error(`Error fetching block ${blockNumber}:`, error);
+              // Record the error block to avoid retrying it in future searches
+              await blockCache.recordErrorBlock(
+                blockNumber,
+                "fetch_error",
+                error instanceof Error ? error.message : "Unknown error"
+              );
             }
-          } catch (error) {
-            console.error(`Error fetching block ${blockNumber}:`, error);
-            // Record the error block to avoid retrying it in future searches
-            await blockCache.recordErrorBlock(
-              blockNumber,
-              "fetch_error",
-              error instanceof Error ? error.message : "Unknown error"
-            );
+            return null;
+          });
+
+          const batchResults = await Promise.all(batchPromises);
+          const validBlocks = batchResults.filter(
+            (block): block is Block => block !== null
+          );
+
+          for (const block of validBlocks) {
+            if (block.transactions) {
+              const relevantTxs = block.transactions.filter(
+                (tx: Transaction) =>
+                  tx.from?.toLowerCase() === address.toLowerCase() ||
+                  tx.to?.toLowerCase() === address.toLowerCase()
+              );
+
+              const txsWithTimestamp = relevantTxs.map((tx: Transaction) => ({
+                ...tx,
+                timestamp: block.timestamp,
+                blockNumber: block.number,
+              }));
+
+              transactions.push(...txsWithTimestamp);
+            }
           }
-          return null;
-        });
+        }
 
-        const batchResults = await Promise.all(batchPromises);
-        const validBlocks = batchResults.filter(
-          (block): block is Block => block !== null
-        );
+        // If we've found enough new blocks, stop searching
+        if (newBlocksProcessed >= totalBlocksToProcess) {
+          break;
+        }
 
-        for (const block of validBlocks) {
-          if (block.transactions) {
-            const relevantTxs = block.transactions.filter(
-              (tx: Transaction) =>
-                tx.from?.toLowerCase() === address.toLowerCase() ||
-                tx.to?.toLowerCase() === address.toLowerCase()
-            );
+        // Move to the previous range
+        currentEndBlock = currentStartBlock - 1;
+        currentStartBlock = Math.max(0, currentEndBlock - maxNewBlocks + 1);
 
-            const txsWithTimestamp = relevantTxs.map((tx: Transaction) => ({
-              ...tx,
-              timestamp: block.timestamp,
-              blockNumber: block.number,
-            }));
-
-            transactions.push(...txsWithTimestamp);
-          }
+        // If we've reached the beginning of the blockchain, stop searching
+        if (currentStartBlock === 0) {
+          break;
         }
       }
 
@@ -659,6 +679,7 @@ const BlockExplorer = () => {
         blocksProcessed: newBlocksProcessed,
         blocksTotal: totalBlocksToProcess,
         transactionsFound: safeTransactions.length,
+        message: `Search completed. Added ${newBlocksProcessed} new blocks to cache, found ${blocksFoundInCache} blocks in cache, found ${safeTransactions.length} transactions.`,
       });
 
       if (safeTransactions.length === 0) {
