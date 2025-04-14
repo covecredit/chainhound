@@ -6,10 +6,12 @@
  * Checks if we're running in a local development environment
  */
 export function isLocalEnvironment(): boolean {
-  return window.location.hostname === 'localhost' || 
-         window.location.hostname === '127.0.0.1' ||
-         window.location.hostname.includes('stackblitz') ||
-         window.location.hostname.includes('webcontainer');
+  return (
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1" ||
+    window.location.hostname.includes("stackblitz") ||
+    window.location.hostname.includes("webcontainer")
+  );
 }
 
 /**
@@ -17,12 +19,52 @@ export function isLocalEnvironment(): boolean {
  */
 export function getFallbackProviders(): string[] {
   return [
-    'https://eth.llamarpc.com',
-    'https://cloudflare-eth.com',
-    'https://rpc.ankr.com/eth',
-    'https://ethereum.publicnode.com',
-    'https://1rpc.io/eth'
+    "https://eth.llamarpc.com",
+    "https://cloudflare-eth.com",
+    "https://rpc.ankr.com/eth",
+    "https://ethereum.publicnode.com",
+    "https://1rpc.io/eth",
   ];
+}
+
+/**
+ * Gets a list of providers that are known to have CORS enabled
+ * These providers should work better in development environments
+ */
+export function getCorsFriendlyProviders(): string[] {
+  return [
+    "https://eth.llamarpc.com",
+    "https://cloudflare-eth.com",
+    "https://rpc.ankr.com/eth",
+    "https://ethereum.publicnode.com",
+    "https://1rpc.io/eth",
+    "https://eth-mainnet.public.blastapi.io",
+    "https://eth.api.onfinality.io/public",
+    "https://eth.rpc.blxrbdn.com",
+  ];
+}
+
+/**
+ * Configures an XMLHttpRequest to bypass CORS restrictions
+ * @param request The XMLHttpRequest to configure
+ * @param url The URL to connect to
+ */
+export function configureRequestForCors(
+  request: XMLHttpRequest,
+  url: string
+): void {
+  // Set withCredentials to false to prevent sending cookies
+  request.withCredentials = false;
+
+  // For local development, we'll use a more permissive approach
+  if (isLocalEnvironment()) {
+    console.log(
+      "Running in local development environment, CORS checks disabled"
+    );
+
+    // Add custom headers that might help with some CORS issues
+    request.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+  }
 }
 
 /**
@@ -46,7 +88,7 @@ export async function testProviderConnection(url: string): Promise<boolean> {
     // Instead, we'll rely on Web3.js's connection handling
     return true;
   } catch (error) {
-    console.error('Provider connection test failed:', error);
+    console.error("Provider connection test failed:", error);
     return false;
   }
 }

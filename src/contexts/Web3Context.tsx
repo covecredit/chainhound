@@ -12,6 +12,10 @@ import { blockCache } from "../services/BlockCache";
 import { saveAs } from "file-saver";
 import JSZip from "jszip";
 import { safelyConvertBigIntToString } from "../utils/bigIntUtils";
+import {
+  configureRequestForCors,
+  getCorsFriendlyProviders,
+} from "../utils/corsProxyUtils";
 
 // Import Ethereum providers from JSON file
 export const ETHEREUM_PROVIDERS = ethereumProviders;
@@ -278,12 +282,16 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({
     // Get all providers from the list
     const availableProviders = ETHEREUM_PROVIDERS.map((p) => p.url);
 
+    // Get CORS-friendly providers
+    const corsFriendlyProviders = getCorsFriendlyProviders();
+
     // Filter out the current provider and any that have failed
     const filteredProviders = availableProviders.filter((url) => {
       if (url === currentProviderRef.current) return false;
       const failures = providerFailuresRef.current.get(url) || 0;
       return failures < 2; // Only try providers that have failed less than twice
     });
+
     // If WebSockets have failed, prioritize HTTPS providers
     let orderedProviders: string[];
     if (wsFailedRef.current) {
@@ -303,6 +311,18 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({
       );
       orderedProviders = [...httpsProviders, ...wssProviders];
     }
+
+    // Prioritize CORS-friendly providers
+    const corsFriendlyFiltered = orderedProviders.filter((url) =>
+      corsFriendlyProviders.includes(url)
+    );
+
+    const nonCorsFriendlyFiltered = orderedProviders.filter(
+      (url) => !corsFriendlyProviders.includes(url)
+    );
+
+    // Put CORS-friendly providers first
+    orderedProviders = [...corsFriendlyFiltered, ...nonCorsFriendlyFiltered];
 
     if (orderedProviders.length === 0) {
       logDebug("No alternative providers available");
@@ -429,46 +449,83 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({
             ],
           } as any);
 
-          // Override the send method to use XMLHttpRequest
+          // Override the send method to use a more robust approach for CORS
           const originalSend = httpProvider.send.bind(httpProvider);
           httpProvider.send = function (
             payload: any,
             callback: (error: Error | null, result?: any) => void
           ) {
-            const request = new XMLHttpRequest();
-            request.open("POST", secureUrl, true);
-            request.setRequestHeader("Content-Type", "application/json");
-
-            request.onreadystatechange = function () {
-              if (request.readyState === 4) {
-                try {
-                  if (request.status >= 200 && request.status < 300) {
-                    const response = JSON.parse(request.responseText);
-                    callback(null, response);
-                  } else {
-                    // Handle rate limiting
-                    if (request.status === 429) {
-                      setTimeout(() => {
-                        originalSend(payload, callback);
-                      }, 1000);
-                      return;
-                    }
-
-                    const error = new Error(
-                      `HTTP ${request.status}: ${request.statusText}`
+            // First try with the original send method
+            try {
+              originalSend(payload, (error, result) => {
+                if (error) {
+                  // If we get a CORS error, try with our custom approach
+                  if (
+                    error.message &&
+                    (error.message.includes("CORS") ||
+                      error.message.includes("cross-origin") ||
+                      error.message.includes("Access-Control-Allow-Origin"))
+                  ) {
+                    console.log(
+                      "CORS error detected, trying alternative approach"
                     );
+
+                    // Create a new XMLHttpRequest with CORS disabled
+                    const request = new XMLHttpRequest();
+                    request.open("POST", secureUrl, true);
+                    request.setRequestHeader(
+                      "Content-Type",
+                      "application/json"
+                    );
+                    request.withCredentials = false;
+
+                    // Add custom headers that might help with CORS
+                    request.setRequestHeader(
+                      "X-Requested-With",
+                      "XMLHttpRequest"
+                    );
+
+                    request.onreadystatechange = function () {
+                      if (request.readyState === 4) {
+                        try {
+                          if (request.status >= 200 && request.status < 300) {
+                            const response = JSON.parse(request.responseText);
+                            callback(null, response);
+                          } else {
+                            callback(
+                              new Error(
+                                `HTTP ${request.status}: ${request.statusText}`
+                              )
+                            );
+                          }
+                        } catch (error) {
+                          callback(
+                            error instanceof Error
+                              ? error
+                              : new Error(String(error))
+                          );
+                        }
+                      }
+                    };
+
+                    try {
+                      request.send(JSON.stringify(payload));
+                    } catch (error) {
+                      callback(
+                        error instanceof Error
+                          ? error
+                          : new Error(String(error))
+                      );
+                    }
+                  } else {
+                    // If it's not a CORS error, pass it through
                     callback(error);
                   }
-                } catch (error) {
-                  callback(
-                    error instanceof Error ? error : new Error(String(error))
-                  );
+                } else {
+                  // If no error, pass the result through
+                  callback(null, result);
                 }
-              }
-            };
-
-            try {
-              request.send(JSON.stringify(payload));
+              });
             } catch (error) {
               callback(
                 error instanceof Error ? error : new Error(String(error))

@@ -102,7 +102,8 @@ const BlockExplorer = () => {
     blocksTotal: 0,
     transactionsFound: 0,
   });
-  const [selectedNodeDetails, setSelectedNodeDetails] = useState<NodeDetails | null>(null);
+  const [selectedNodeDetails, setSelectedNodeDetails] =
+    useState<NodeDetails | null>(null);
   const [showSearchHistory, setShowSearchHistory] = useState(false);
   const [recentSearches, setRecentSearches] = useState<RecentSearch[]>([]);
   const searchHistoryRef = useRef<HTMLDivElement>(null);
@@ -249,7 +250,7 @@ const BlockExplorer = () => {
       setSelectedNodeDetails(null);
       searchCancelRef.current = false;
       setProviderSwitchAttempted(false);
-      
+
       setSearchProgress({
         status: "idle",
         blocksProcessed: 0,
@@ -273,24 +274,30 @@ const BlockExplorer = () => {
       } else if (searchType === "address") {
         await searchAddress(searchQuery);
       } else {
-        setError("Invalid search query. Please enter a valid block number, transaction hash, or address.");
+        setError(
+          "Invalid search query. Please enter a valid block number, transaction hash, or address."
+        );
       }
     } catch (error: any) {
       console.error("Search error:", error);
       setError(error.message || "An error occurred during search");
-      
-      if (!providerSwitchAttempted && 
-          (error.message.includes("connection") || 
-           error.message.includes("network") || 
-           error.message.includes("timeout"))) {
+
+      if (
+        !providerSwitchAttempted &&
+        (error.message.includes("connection") ||
+          error.message.includes("network") ||
+          error.message.includes("timeout"))
+      ) {
         setError("Connection issue detected. Attempting to reconnect...");
         setProviderSwitchAttempted(true);
-        
+
         try {
           await reconnectProvider();
           handleSearch(searchQuery);
         } catch (reconnectError) {
-          setError("Failed to reconnect. Please try again or check your connection in Settings.");
+          setError(
+            "Failed to reconnect. Please try again or check your connection in Settings."
+          );
         }
       }
     } finally {
@@ -310,25 +317,25 @@ const BlockExplorer = () => {
         blocksTotal: 1,
         transactionsFound: 0,
       });
-      
+
       const blockNumber = Number(blockId);
-      
+
       const cachedBlock = await blockCache.getBlock(blockNumber);
-      
+
       if (cachedBlock) {
         console.log("Block found in cache:", cachedBlock);
         setBlockData({
           type: "block",
           block: cachedBlock,
         });
-        
+
         setSelectedNodeDetails({
           type: "block",
           blockNumber: cachedBlock.number,
           hash: cachedBlock.hash,
-          timestamp: cachedBlock.timestamp
+          timestamp: cachedBlock.timestamp,
         });
-        
+
         setSearchProgress({
           status: "completed",
           blocksProcessed: 1,
@@ -337,29 +344,29 @@ const BlockExplorer = () => {
         });
         return;
       }
-      
+
       const block = await web3!.eth.getBlock(blockNumber, true);
-      
+
       if (!block) {
         throw new Error(`Block ${blockId} not found`);
       }
-      
+
       const safeBlock = safelyConvertBigIntToString(block);
-      
+
       await blockCache.cacheBlock(safeBlock);
-      
+
       setBlockData({
         type: "block",
         block: safeBlock as unknown as Block,
       });
-      
+
       setSelectedNodeDetails({
         type: "block",
         blockNumber: safeBlock.number,
         hash: safeBlock.hash,
-        timestamp: safeBlock.timestamp
+        timestamp: safeBlock.timestamp,
       });
-      
+
       setSearchProgress({
         status: "completed",
         blocksProcessed: 1,
@@ -380,52 +387,52 @@ const BlockExplorer = () => {
         blocksTotal: 1,
         transactionsFound: 0,
       });
-      
+
       const tx = await web3!.eth.getTransaction(txHash);
-      
+
       if (!tx) {
         throw new Error(`Transaction ${txHash} not found`);
       }
-      
+
       const safeTx = safelyConvertBigIntToString(tx);
-      
+
       const receipt = await web3!.eth.getTransactionReceipt(txHash);
       const safeReceipt = safelyConvertBigIntToString(receipt);
-      
+
       let block;
       if (safeTx.blockNumber) {
         block = await blockCache.getBlock(Number(safeTx.blockNumber));
-        
+
         if (!block) {
           const fetchedBlock = await web3!.eth.getBlock(safeTx.blockNumber);
-          
+
           block = safelyConvertBigIntToString(fetchedBlock);
-          
+
           if (block) {
             await blockCache.cacheBlock(block);
           }
         }
       }
-      
+
       const txWithTimestamp = {
         ...safeTx,
         timestamp: block?.timestamp,
       };
-      
+
       setBlockData({
         type: "transaction",
         transaction: txWithTimestamp as unknown as Transaction,
         receipt: safeReceipt,
       });
-      
+
       setSelectedNodeDetails({
         type: "transaction",
         hash: txWithTimestamp.hash,
         blockNumber: Number(txWithTimestamp.blockNumber),
         value: txWithTimestamp.value,
-        timestamp: txWithTimestamp.timestamp
+        timestamp: txWithTimestamp.timestamp,
       });
-      
+
       setSearchProgress({
         status: "completed",
         blocksProcessed: block ? 1 : 0,
@@ -434,15 +441,17 @@ const BlockExplorer = () => {
       });
     } catch (error: any) {
       console.error("Error searching for transaction:", error);
-      throw new Error(`Failed to fetch transaction ${txHash}: ${error.message}`);
+      throw new Error(
+        `Failed to fetch transaction ${txHash}: ${error.message}`
+      );
     }
   };
 
   const searchAddress = async (address: string) => {
     try {
       const code = await web3!.eth.getCode(address);
-      const isContract = code !== '0x';
-      
+      const isContract = code !== "0x";
+
       setSearchProgress({
         status: "searching",
         blocksProcessed: 0,
@@ -450,30 +459,43 @@ const BlockExplorer = () => {
         transactionsFound: 0,
         message: "Searching for transactions...",
       });
-      
+
       let startBlock = 0;
       let endBlock = Number(await web3!.eth.getBlockNumber());
       let maxNewBlocks = parseInt(searchRange.maxBlocks) || 1000;
-      
-      if (showAdvancedSearch && searchRange.startBlock && searchRange.endBlock) {
+
+      if (
+        showAdvancedSearch &&
+        searchRange.startBlock &&
+        searchRange.endBlock
+      ) {
         startBlock = Number(searchRange.startBlock);
         endBlock = Number(searchRange.endBlock);
-        
+
         if (startBlock > endBlock) {
-          throw new Error("Start block must be less than or equal to end block");
+          throw new Error(
+            "Start block must be less than or equal to end block"
+          );
         }
       } else {
+        // Always search for the requested number of blocks, regardless of what's in the cache
         startBlock = Math.max(0, endBlock - maxNewBlocks + 1);
       }
-      
+
       // Get cached and error blocks in the range
-      const cachedBlockNumbers = await blockCache.getCachedBlockNumbers(startBlock, endBlock);
-      const errorBlocks = await blockCache.getErrorBlocksInRange(startBlock, endBlock);
-      const errorBlockNumbers = new Set(errorBlocks.map(b => b.blockNumber));
-      
+      const cachedBlockNumbers = await blockCache.getCachedBlockNumbers(
+        startBlock,
+        endBlock
+      );
+      const errorBlocks = await blockCache.getErrorBlocksInRange(
+        startBlock,
+        endBlock
+      );
+      const errorBlockNumbers = new Set(errorBlocks.map((b) => b.blockNumber));
+
       console.log(`Found ${cachedBlockNumbers.length} cached blocks in range`);
       console.log(`Found ${errorBlocks.length} error blocks in range`);
-      
+
       // Calculate blocks that need to be fetched (not in cache and not in error blocks)
       const blocksToFetch = [];
       for (let i = startBlock; i <= endBlock; i++) {
@@ -481,18 +503,15 @@ const BlockExplorer = () => {
           blocksToFetch.push(i);
         }
       }
-      
-      // Limit the number of new blocks to fetch
-      if (blocksToFetch.length > maxNewBlocks) {
-        console.log(`Limiting new blocks to fetch from ${blocksToFetch.length} to ${maxNewBlocks}`);
-        blocksToFetch.length = maxNewBlocks;
-        endBlock = blocksToFetch[blocksToFetch.length - 1];
-      }
-      
+
+      // We no longer limit the number of new blocks to fetch
+      // This allows the cache to grow continuously with each search
       console.log(`Need to fetch ${blocksToFetch.length} new blocks`);
-      
-      const totalBlocksToProcess = cachedBlockNumbers.length + blocksToFetch.length;
-      
+
+      // The total blocks to process is the sum of cached blocks and blocks to fetch
+      const totalBlocksToProcess =
+        cachedBlockNumbers.length + blocksToFetch.length;
+
       setSearchProgress({
         status: "searching",
         blocksProcessed: 0,
@@ -500,34 +519,35 @@ const BlockExplorer = () => {
         transactionsFound: 0,
         message: `Searching blocks ${startBlock} to ${endBlock}...`,
       });
-      
+
       const transactions: Transaction[] = [];
       let processedBlocks = 0;
-      
+
       // Process cached blocks first (no limit on these)
       for (const blockNumber of cachedBlockNumbers) {
         if (searchCancelRef.current) break;
-        
+
         const block = await blockCache.getBlock(blockNumber);
         if (block && block.transactions) {
-          const relevantTxs = block.transactions.filter(tx => 
-            tx.from?.toLowerCase() === address.toLowerCase() || 
-            tx.to?.toLowerCase() === address.toLowerCase()
+          const relevantTxs = block.transactions.filter(
+            (tx) =>
+              tx.from?.toLowerCase() === address.toLowerCase() ||
+              tx.to?.toLowerCase() === address.toLowerCase()
           );
-          
-          const txsWithTimestamp = relevantTxs.map(tx => ({
+
+          const txsWithTimestamp = relevantTxs.map((tx) => ({
             ...tx,
             timestamp: block.timestamp,
             blockNumber: block.number,
           }));
-          
+
           transactions.push(...txsWithTimestamp);
         }
-        
+
         processedBlocks++;
-        
+
         if (processedBlocks % 10 === 0) {
-          setSearchProgress(prev => ({
+          setSearchProgress((prev) => ({
             ...prev,
             blocksProcessed: processedBlocks,
             transactionsFound: transactions.length,
@@ -535,108 +555,146 @@ const BlockExplorer = () => {
           }));
         }
       }
-      
+
       // Process new blocks in batches
       const batchSize = 10;
       for (let i = 0; i < blocksToFetch.length; i += batchSize) {
         if (searchCancelRef.current) break;
-        
+
         const batch = blocksToFetch.slice(i, i + batchSize);
-        
-        const blockPromises = batch.map(async (blockNumber) => {
-          try {
-            const fetchedBlock = await web3!.eth.getBlock(blockNumber, true);
-            const safeBlock = safelyConvertBigIntToString(fetchedBlock);
-            
-            if (safeBlock) {
-              await blockCache.cacheBlock(safeBlock);
-              return safeBlock;
+
+        // Double-check if any blocks in this batch are already in the cache
+        const blocksToActuallyFetch = [];
+        for (const blockNumber of batch) {
+          const isInCache = await blockCache.getBlock(blockNumber);
+          if (!isInCache) {
+            blocksToActuallyFetch.push(blockNumber);
+          } else {
+            // If it's in the cache, process it directly
+            if (isInCache.transactions) {
+              const relevantTxs = isInCache.transactions.filter(
+                (tx: any) =>
+                  tx.from?.toLowerCase() === address.toLowerCase() ||
+                  tx.to?.toLowerCase() === address.toLowerCase()
+              );
+
+              const txsWithTimestamp = relevantTxs.map((tx: any) => ({
+                ...tx,
+                timestamp: isInCache.timestamp,
+                blockNumber: isInCache.number,
+              }));
+
+              transactions.push(...txsWithTimestamp);
             }
-            return null;
-          } catch (error) {
-            console.error(`Error fetching block ${blockNumber}:`, error);
-            await blockCache.recordErrorBlock(
-              blockNumber, 
-              'fetch_error', 
-              error instanceof Error ? error.message : 'Unknown error'
-            );
-            return null;
-          }
-        });
-        
-        const blocks = await Promise.all(blockPromises);
-        
-        for (const block of blocks) {
-          if (block && block.transactions) {
-            const relevantTxs = block.transactions.filter((tx: any) => 
-              tx.from?.toLowerCase() === address.toLowerCase() || 
-              tx.to?.toLowerCase() === address.toLowerCase()
-            );
-            
-            const txsWithTimestamp = relevantTxs.map((tx: any) => ({
-              ...tx,
-              timestamp: block.timestamp,
-              blockNumber: block.number,
-            }));
-            
-            transactions.push(...txsWithTimestamp);
+            processedBlocks++;
           }
         }
-        
-        processedBlocks += batch.length;
-        
-        setSearchProgress(prev => ({
+
+        // Only fetch blocks that aren't in the cache
+        if (blocksToActuallyFetch.length > 0) {
+          const blockPromises = blocksToActuallyFetch.map(
+            async (blockNumber) => {
+              try {
+                const fetchedBlock = await web3!.eth.getBlock(
+                  blockNumber,
+                  true
+                );
+                const safeBlock = safelyConvertBigIntToString(fetchedBlock);
+
+                if (safeBlock) {
+                  await blockCache.cacheBlock(safeBlock);
+                  return safeBlock;
+                }
+                return null;
+              } catch (error) {
+                console.error(`Error fetching block ${blockNumber}:`, error);
+                await blockCache.recordErrorBlock(
+                  blockNumber,
+                  "fetch_error",
+                  error instanceof Error ? error.message : "Unknown error"
+                );
+                return null;
+              }
+            }
+          );
+
+          const blocks = await Promise.all(blockPromises);
+
+          for (const block of blocks) {
+            if (block && block.transactions) {
+              const relevantTxs = block.transactions.filter(
+                (tx: any) =>
+                  tx.from?.toLowerCase() === address.toLowerCase() ||
+                  tx.to?.toLowerCase() === address.toLowerCase()
+              );
+
+              const txsWithTimestamp = relevantTxs.map((tx: any) => ({
+                ...tx,
+                timestamp: block.timestamp,
+                blockNumber: block.number,
+              }));
+
+              transactions.push(...txsWithTimestamp);
+            }
+          }
+
+          processedBlocks += blocksToActuallyFetch.length;
+        }
+
+        setSearchProgress((prev) => ({
           ...prev,
           blocksProcessed: processedBlocks,
           transactionsFound: transactions.length,
           message: `Processed ${processedBlocks} of ${totalBlocksToProcess} blocks...`,
         }));
       }
-      
+
       // Check contract interactions
       for (const tx of transactions) {
         if (tx.from?.toLowerCase() === address.toLowerCase()) {
           if (tx.to) {
             try {
               const code = await web3!.eth.getCode(tx.to);
-              tx._isContractCall = code !== '0x';
+              tx._isContractCall = code !== "0x";
             } catch (error) {
               console.error(`Error checking if ${tx.to} is a contract:`, error);
             }
           }
         }
       }
-      
+
       // Sort transactions by block number (descending)
       transactions.sort((a, b) => {
         const blockA = Number(a.blockNumber);
         const blockB = Number(b.blockNumber);
         return blockB - blockA;
       });
-      
+
       const safeTransactions = safelyConvertBigIntToString(transactions);
-      
+
       setBlockData({
         type: "address",
         address,
         isContract,
         transactions: safeTransactions,
       });
-      
+
       setSelectedNodeDetails({
         type: isContract ? "contract" : "address",
-        id: address
+        id: address,
       });
-      
+
       setSearchProgress({
         status: "completed",
         blocksProcessed: processedBlocks,
         blocksTotal: totalBlocksToProcess,
         transactionsFound: safeTransactions.length,
       });
-      
+
       if (safeTransactions.length === 0) {
-        setError(`No transactions found for address ${address} in the specified block range.`);
+        setError(
+          `No transactions found for address ${address} in the specified block range.`
+        );
       }
     } catch (error: any) {
       console.error("Error searching for address:", error);
@@ -646,7 +704,7 @@ const BlockExplorer = () => {
 
   const cancelSearch = () => {
     searchCancelRef.current = true;
-    setSearchProgress(prev => ({
+    setSearchProgress((prev) => ({
       ...prev,
       status: "cancelled",
       message: "Search cancelled by user",
@@ -658,13 +716,13 @@ const BlockExplorer = () => {
   };
 
   const handleNodeDoubleClick = (node: NodeDetails) => {
-    if (node.type === 'address' || node.type === 'contract') {
-      setSearchInput(node.id || '');
+    if (node.type === "address" || node.type === "contract") {
+      setSearchInput(node.id || "");
       handleSearch(node.id);
-    } else if (node.type === 'transaction' && node.hash) {
+    } else if (node.type === "transaction" && node.hash) {
       setSearchInput(node.hash);
       handleSearch(node.hash);
-    } else if (node.type === 'block' && node.blockNumber !== undefined) {
+    } else if (node.type === "block" && node.blockNumber !== undefined) {
       setSearchInput(node.blockNumber.toString());
       handleSearch(node.blockNumber.toString());
     }
@@ -672,17 +730,17 @@ const BlockExplorer = () => {
 
   const captureGraph = async () => {
     if (!graphRef.current) return;
-    
+
     try {
       const dataUrl = await toPng(graphRef.current, { quality: 0.95 });
-      
-      const link = document.createElement('a');
+
+      const link = document.createElement("a");
       link.download = `chainhound-graph-${Date.now()}.png`;
       link.href = dataUrl;
       link.click();
     } catch (error) {
-      console.error('Error capturing graph:', error);
-      setError('Failed to capture graph as image');
+      console.error("Error capturing graph:", error);
+      setError("Failed to capture graph as image");
     }
   };
 
@@ -692,7 +750,7 @@ const BlockExplorer = () => {
 
   const handleSearchRangeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setSearchRange(prev => ({
+    setSearchRange((prev) => ({
       ...prev,
       [name]: value,
     }));
@@ -702,7 +760,7 @@ const BlockExplorer = () => {
     <div className="w-full min-w-0 overflow-x-hidden">
       <div className="bg-white p-6 rounded-lg shadow-md dark:bg-gray-800 dark:text-white">
         <h1 className="text-2xl font-bold mb-4">Block Explorer</h1>
-        
+
         <div className="relative">
           <div className="flex flex-col md:flex-row gap-2">
             <div className="flex-1 relative">
@@ -712,7 +770,7 @@ const BlockExplorer = () => {
                   type="text"
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                   placeholder="Enter block number, transaction hash, or address..."
                   className="w-full p-2 pr-10 border rounded-l focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                 />
@@ -728,18 +786,20 @@ const BlockExplorer = () => {
                   )}
                 </button>
               </div>
-              
+
               {showSearchHistory && (
-                <div 
+                <div
                   ref={searchHistoryRef}
                   className="absolute z-10 mt-1 w-full bg-white border rounded-md shadow-lg max-h-60 overflow-auto dark:bg-gray-700 dark:border-gray-600"
                 >
                   {searchHistory.length === 0 ? (
-                    <div className="p-2 text-gray-500 dark:text-gray-400">No search history</div>
+                    <div className="p-2 text-gray-500 dark:text-gray-400">
+                      No search history
+                    </div>
                   ) : (
                     <ul>
                       {searchHistory.map((query, index) => (
-                        <li 
+                        <li
                           key={index}
                           className="px-3 py-2 hover:bg-gray-100 cursor-pointer dark:hover:bg-gray-600"
                           onClick={() => {
@@ -756,7 +816,7 @@ const BlockExplorer = () => {
                 </div>
               )}
             </div>
-            
+
             <div className="flex space-x-2">
               <button
                 onClick={toggleAdvancedSearch}
@@ -769,7 +829,7 @@ const BlockExplorer = () => {
                   <ChevronDown className="h-4 w-4" />
                 )}
               </button>
-              
+
               {blockData && (
                 <button
                   onClick={captureGraph}
@@ -781,10 +841,12 @@ const BlockExplorer = () => {
               )}
             </div>
           </div>
-          
+
           {showAdvancedSearch && (
             <div className="mt-2 p-3 border rounded-md bg-gray-50 dark:bg-gray-700 dark:border-gray-600">
-              <h3 className="text-sm font-medium mb-2">Advanced Search Options</h3>
+              <h3 className="text-sm font-medium mb-2">
+                Advanced Search Options
+              </h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs mb-1">Start Block</label>
@@ -821,43 +883,48 @@ const BlockExplorer = () => {
                 </div>
               </div>
               <p className="text-xs text-gray-500 mt-2 dark:text-gray-400">
-                Specify a block range to search. For address searches, this limits the blocks scanned for transactions.
+                Specify a block range to search. For address searches, this
+                limits the blocks scanned for transactions.
               </p>
             </div>
           )}
         </div>
-        
-        {searchProgress.status !== 'idle' && (
+
+        {searchProgress.status !== "idle" && (
           <div className="mt-2 p-2 border rounded-md bg-gray-50 dark:bg-gray-700 dark:border-gray-600">
             <div className="flex justify-between items-center mb-1">
               <div className="flex items-center">
-                {searchProgress.status === 'searching' && (
+                {searchProgress.status === "searching" && (
                   <>
                     <RefreshCw className="h-4 w-4 mr-1 animate-spin text-indigo-600 dark:text-indigo-400" />
                     <span className="text-sm font-medium">Searching...</span>
                   </>
                 )}
-                {searchProgress.status === 'completed' && (
+                {searchProgress.status === "completed" && (
                   <>
                     <CheckCircle className="h-4 w-4 mr-1 text-green-600 dark:text-green-400" />
-                    <span className="text-sm font-medium">Search completed</span>
+                    <span className="text-sm font-medium">
+                      Search completed
+                    </span>
                   </>
                 )}
-                {searchProgress.status === 'cancelled' && (
+                {searchProgress.status === "cancelled" && (
                   <>
                     <StopCircle className="h-4 w-4 mr-1 text-amber-600 dark:text-amber-400" />
-                    <span className="text-sm font-medium">Search cancelled</span>
+                    <span className="text-sm font-medium">
+                      Search cancelled
+                    </span>
                   </>
                 )}
-                {searchProgress.status === 'error' && (
+                {searchProgress.status === "error" && (
                   <>
                     <AlertTriangle className="h-4 w-4 mr-1 text-red-600 dark:text-red-400" />
                     <span className="text-sm font-medium">Search error</span>
                   </>
                 )}
               </div>
-              
-              {searchProgress.status === 'searching' && (
+
+              {searchProgress.status === "searching" && (
                 <button
                   onClick={cancelSearch}
                   className="text-red-600 hover:text-re d-800 text-sm flex items-center dark:text-red-400 dark:hover:text-red-300"
@@ -867,29 +934,39 @@ const BlockExplorer = () => {
                 </button>
               )}
             </div>
-            
-            {searchProgress.status === 'searching' && (
+
+            {searchProgress.status === "searching" && (
               <>
                 <div className="w-full bg-gray-200 rounded-full h-2.5 mb-1 dark:bg-gray-600">
-                  <div  className="bg-indigo-600 h-2.5 rounded-full dark:bg-indigo-500" 
-                    style={{ 
-                      width: `${searchProgress.blocksTotal > 0 
-                        ? Math.min(100, (searchProgress.blocksProcessed / searchProgress.blocksTotal) * 100) 
-                        : 0}%` 
+                  <div
+                    className="bg-indigo-600 h-2.5 rounded-full dark:bg-indigo-500"
+                    style={{
+                      width: `${
+                        searchProgress.blocksTotal > 0
+                          ? Math.min(
+                              100,
+                              (searchProgress.blocksProcessed /
+                                searchProgress.blocksTotal) *
+                                100
+                            )
+                          : 0
+                      }%`,
                     }}
                   />
                 </div>
                 <div className="flex justify-between text-xs">
                   <span>
-                    {searchProgress.blocksProcessed.toLocaleString()} / {searchProgress.blocksTotal.toLocaleString()} blocks
+                    {searchProgress.blocksProcessed.toLocaleString()} /{" "}
+                    {searchProgress.blocksTotal.toLocaleString()} blocks
                   </span>
                   <span>
-                    {searchProgress.transactionsFound.toLocaleString()} transactions found
+                    {searchProgress.transactionsFound.toLocaleString()}{" "}
+                    transactions found
                   </span>
                 </div>
               </>
             )}
-            
+
             {searchProgress.message && (
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                 {searchProgress.message}
@@ -897,61 +974,70 @@ const BlockExplorer = () => {
             )}
           </div>
         )}
-        
+
         {error && (
           <div className="mt-4 p-3 bg-red-100 text-red-700 rounded flex items-start dark:bg-red-900 dark:text-red-200">
             <AlertTriangle className="h-5 w-5 mr-2 flex-shrink-0 mt-0.5" />
             <p>{error}</p>
           </div>
         )}
-        
+
         {blockData && (
           <div className="mt-6">
             <div className="bg-gray-50 p-4 rounded-lg border dark:bg-gray-700 dark:border-gray-600">
               <div ref={graphRef} className="w-full h-[600px]">
-                <BlockGraph 
+                <BlockGraph
                   data={blockData}
                   onNodeClick={handleNodeClick}
                   onNodeDoubleClick={handleNodeDoubleClick}
                 />
               </div>
             </div>
-            
+
             {selectedNodeDetails && (
               <div className="mt-4 p-4 bg-white rounded-lg border dark:bg-gray-800 dark:border-gray-600">
-                <h3 className="text-lg font-medium mb-2">Selected Node Details</h3>
+                <h3 className="text-lg font-medium mb-2">
+                  Selected Node Details
+                </h3>
                 <div className="space-y-2">
                   <p>
-                    <span className="font-medium">Type:</span> {selectedNodeDetails.type}
+                    <span className="font-medium">Type:</span>{" "}
+                    {selectedNodeDetails.type}
                   </p>
                   {selectedNodeDetails.id && (
                     <p>
-                      <span className="font-medium">ID:</span> {selectedNodeDetails.id}
+                      <span className="font-medium">ID:</span>{" "}
+                      {selectedNodeDetails.id}
                     </p>
                   )}
                   {selectedNodeDetails.hash && (
                     <p>
-                      <span className="font-medium">Hash:</span> {selectedNodeDetails.hash}
+                      <span className="font-medium">Hash:</span>{" "}
+                      {selectedNodeDetails.hash}
                     </p>
                   )}
                   {selectedNodeDetails.blockNumber !== undefined && (
                     <p>
-                      <span className="font-medium">Block Number:</span> {selectedNodeDetails.blockNumber}
+                      <span className="font-medium">Block Number:</span>{" "}
+                      {selectedNodeDetails.blockNumber}
                     </p>
                   )}
                   {selectedNodeDetails.value && (
                     <p>
-                      <span className="font-medium">Value:</span> {selectedNodeDetails.value}
+                      <span className="font-medium">Value:</span>{" "}
+                      {selectedNodeDetails.value}
                     </p>
                   )}
                   {selectedNodeDetails.timestamp && (
                     <p>
-                      <span className="font-medium">Timestamp:</span> {formatTimestamp(selectedNodeDetails.timestamp)}
+                      <span className="font-medium">Timestamp:</span>{" "}
+                      {formatTimestamp(selectedNodeDetails.timestamp)}
                     </p>
                   )}
                   {selectedNodeDetails.role && (
                     <p>
-                      <span className="font-medium">Role:</span> {selectedNodeDetails.role}
+                      <span className="font-medium">Role:</span>{" "}
+                      {selectedNodeDetails.role}
                     </p>
                   )}
                 </div>
