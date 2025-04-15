@@ -574,6 +574,27 @@ const BlockExplorer = () => {
         message: `Found ${cachedInRange.length} cached blocks, fetching ${totalBlocksToProcess} new blocks...`,
       }));
 
+      // --- NEW: Scan all cached blocks in range for relevant transactions ---
+      let cachedBlocksWithTxs = 0;
+      for (const blockNum of cachedInRange) {
+        const block = await blockCache.getBlock(blockNum);
+        if (block && block.transactions) {
+          const relevantTxs = block.transactions.filter(
+            (tx: Transaction) =>
+              tx.from?.toLowerCase() === address.toLowerCase() ||
+              tx.to?.toLowerCase() === address.toLowerCase()
+          );
+          if (relevantTxs.length > 0) cachedBlocksWithTxs++;
+          const txsWithTimestamp = relevantTxs.map((tx: Transaction) => ({
+            ...tx,
+            timestamp: block.timestamp,
+            blockNumber: block.number,
+          }));
+          transactions.push(...txsWithTimestamp);
+        }
+      }
+      // --- END NEW ---
+
       // Retry error blocks if enabled
       if (retryErrorBlocks && allErrorBlocks.length > 0) {
         setSearchProgress((prev) => ({
