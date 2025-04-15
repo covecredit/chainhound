@@ -289,6 +289,31 @@ const BlockExplorer = () => {
         );
       }
     } catch (error: any) {
+      if (error instanceof RangeError && error.message.includes("call stack")) {
+        setError(
+          "Search failed: Too many results or recursion. Please reduce the search range or try a smaller query."
+        );
+        setSearchProgress((prev) => ({
+          ...prev,
+          status: "error",
+          message: "Search failed due to stack overflow.",
+        }));
+        return;
+      }
+      if (
+        error.message &&
+        error.message.toLowerCase().includes("out of memory")
+      ) {
+        setError(
+          "Search failed: Out of memory. Please reduce the search range or clear some cache."
+        );
+        setSearchProgress((prev) => ({
+          ...prev,
+          status: "error",
+          message: "Search failed due to out of memory.",
+        }));
+        return;
+      }
       console.error("Search error:", error);
       setError(error.message || "An error occurred during search");
 
@@ -516,6 +541,42 @@ const BlockExplorer = () => {
         startBlock,
         endBlock
       );
+      let totalCachedBlocks = cachedInRange.length;
+      setSearchProgress((prev) => ({
+        ...prev,
+        status: "searching",
+        message: `Searching cache (may take a while if cache is large)... Found ${totalCachedBlocks} cached blocks.`,
+        blocksTotal: totalBlocksToProcess,
+        blocksProcessed: 0,
+        transactionsFound: 0,
+      }));
+
+      // Retry error blocks if enabled
+      if (retryErrorBlocks && allErrorBlocks.length > 0) {
+        setSearchProgress((prev) => ({
+          ...prev,
+          message: `Retrying ${allErrorBlocks.length} error blocks... This may take a while.`,
+        }));
+        let fixed = 0;
+        for (const err of allErrorBlocks) {
+          try {
+            const block = await web3!.eth.getBlock(err.blockNumber, true);
+            if (block) {
+              await blockCache.cacheBlocks([block]);
+              await blockCache.removeErrorBlock(err.blockNumber);
+              fixed++;
+              totalCachedBlocks++;
+              setSearchProgress((prev) => ({
+                ...prev,
+                message: `Fixed ${fixed} error blocks, found ${totalCachedBlocks} cached blocks.`,
+              }));
+            }
+          } catch (e) {
+            // Ignore, will remain in error list
+          }
+        }
+      }
+
       console.log(
         `Cached blocks in range ${startBlock}-${endBlock}:`,
         cachedInRange
@@ -625,9 +686,7 @@ const BlockExplorer = () => {
                   ...prev,
                   blocksProcessed: newBlocksProcessed,
                   transactionsFound: transactions.length,
-                  message: `Added ${newBlocksProcessed} new blocks to cache, found ${
-                    cachedInRange.length
-                  } blocks in cache, ${
+                  message: `Searching cache (may take a while if cache is large)... Found ${totalCachedBlocks} cached blocks. Added ${newBlocksProcessed} new blocks to cache, ${
                     totalBlocksToProcess - newBlocksProcessed
                   } remaining...`,
                 }));
@@ -720,6 +779,19 @@ const BlockExplorer = () => {
         );
       }
     } catch (error: any) {
+      if (error instanceof RangeError && error.message.includes("call stack")) {
+        throw new Error(
+          "Search failed: Too many results or recursion. Please reduce the search range or try a smaller query."
+        );
+      }
+      if (
+        error.message &&
+        error.message.toLowerCase().includes("out of memory")
+      ) {
+        throw new Error(
+          "Search failed: Out of memory. Please reduce the search range or clear some cache."
+        );
+      }
       console.error("Error searching for address:", error);
       throw new Error(`Failed to search address ${address}: ${error.message}`);
     }
@@ -795,7 +867,9 @@ const BlockExplorer = () => {
                   id="search-input"
                   type="text"
                   value={searchInput}
-                  onChange={(e) => setSearchInput(sanitizeSearchInput(e.target.value))}
+                  onChange={(e) =>
+                    setSearchInput(sanitizeSearchInput(e.target.value))
+                  }
                   onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                   placeholder="Enter block number, transaction hash, or address..."
                   className="w-full p-2 pr-10 border rounded-l focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:bg-gray-700 dark:border-gray-600 dark:text-white"
