@@ -575,6 +575,19 @@ class BlockCache {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   }
+
+  // Returns all cached blocks as an array
+  async getAllBlocks() {
+    const allBlocks = [];
+    const keys = await this.db.keys();
+    for (const key of keys) {
+      if (key.startsWith("block:")) {
+        const block = await this.db.get(key);
+        if (block) allBlocks.push(block);
+      }
+    }
+    return allBlocks;
+  }
 }
 
 // Export singleton instance

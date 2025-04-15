@@ -351,7 +351,6 @@ const Settings = () => {
           type: "info",
           text: "Fixing error blocks, please wait...",
         });
-        // Use the blockCache to get all error blocks
         const errorBlocks = await blockCache.getErrorBlocksInRange(
           0,
           Number.MAX_SAFE_INTEGER
@@ -359,9 +358,11 @@ const Settings = () => {
         let fixed = 0;
         for (const err of errorBlocks) {
           try {
+            // Use the same fetch and cache logic as BlockExplorer
             const block = await window.web3.eth.getBlock(err.blockNumber, true);
             if (block) {
-              await blockCache.cacheBlocks([block]);
+              await blockCache.cacheBlock(block);
+              await blockCache.removeErrorBlock(err.blockNumber);
               fixed++;
             }
           } catch (e) {

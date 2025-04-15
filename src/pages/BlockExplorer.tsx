@@ -111,6 +111,15 @@ const BlockExplorer = () => {
   const graphRef = useRef<HTMLDivElement>(null);
   const searchCancelRef = useRef<boolean>(false);
   const [providerSwitchAttempted, setProviderSwitchAttempted] = useState(false);
+  const [startBlockMeta, setStartBlockMeta] = useState<{
+    timestamp?: number;
+    number?: number;
+  } | null>(null);
+  const [endBlockMeta, setEndBlockMeta] = useState<{
+    timestamp?: number;
+    number?: number;
+  } | null>(null);
+  const [blockRangeError, setBlockRangeError] = useState<string | null>(null);
 
   useEffect(() => {
     const savedSearches = localStorage.getItem("chainhound_recent_searches");
@@ -242,6 +251,12 @@ const BlockExplorer = () => {
   };
 
   const handleSearch = async (query?: string) => {
+    // Cancel any previous search before starting a new one
+    searchCancelRef.current = true;
+    // Give a tick for any previous async loops to check the flag
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    searchCancelRef.current = false;
+
     let searchQuery = query || searchInput;
     searchQuery = sanitizeSearchInput(searchQuery);
     if (!searchQuery) return;
@@ -345,6 +360,8 @@ const BlockExplorer = () => {
   };
 
   const searchBlock = async (blockId: string) => {
+    if (searchCancelRef.current) return;
+
     try {
       setSearchProgress({
         status: "searching",
@@ -415,6 +432,8 @@ const BlockExplorer = () => {
   };
 
   const searchTransaction = async (txHash: string) => {
+    if (searchCancelRef.current) return;
+
     try {
       setSearchProgress({
         status: "searching",
@@ -483,17 +502,21 @@ const BlockExplorer = () => {
   };
 
   const searchAddress = async (address: string) => {
+    if (searchCancelRef.current) return;
+
     try {
+      const retryErrorBlocks = false; // Set to true if you want to retry error blocks
       const code = await web3!.eth.getCode(address);
       const isContract = code !== "0x";
 
-      setSearchProgress({
+      setSearchProgress((prev) => ({
+        ...prev,
         status: "searching",
-        blocksProcessed: 0,
+        message: `Scanning large cache for relevant blocks and transactions. This may take a while if your cache is large...`,
         blocksTotal: 0,
+        blocksProcessed: 0,
         transactionsFound: 0,
-        message: "Searching for transactions...",
-      });
+      }));
 
       // Get the latest block number
       const latestBlockNumber = Number(await web3!.eth.getBlockNumber());
@@ -510,7 +533,8 @@ const BlockExplorer = () => {
       ) {
         startBlock = Number(searchRange.startBlock);
         endBlock = Number(searchRange.endBlock);
-
+        // Only use the user-specified range, ignore maxBlocks
+        maxNewBlocks = endBlock - startBlock + 1;
         if (startBlock > endBlock) {
           throw new Error(
             "Start block must be less than or equal to end block"
@@ -542,13 +566,12 @@ const BlockExplorer = () => {
         endBlock
       );
       let totalCachedBlocks = cachedInRange.length;
+      // Calculate totalBlocksToProcess before using it
+      const totalBlocksToProcess = maxNewBlocks;
       setSearchProgress((prev) => ({
         ...prev,
-        status: "searching",
-        message: `Searching cache (may take a while if cache is large)... Found ${totalCachedBlocks} cached blocks.`,
         blocksTotal: totalBlocksToProcess,
-        blocksProcessed: 0,
-        transactionsFound: 0,
+        message: `Found ${cachedInRange.length} cached blocks, fetching ${totalBlocksToProcess} new blocks...`,
       }));
 
       // Retry error blocks if enabled
@@ -594,7 +617,6 @@ const BlockExplorer = () => {
       const maxSearchRanges = 100; // Increase the limit to allow for more ranges to be searched
 
       // Set the total blocks to process - this is the number of new blocks we want to fetch
-      const totalBlocksToProcess = maxNewBlocks;
       setSearchProgress((prev) => ({
         ...prev,
         blocksTotal: totalBlocksToProcess,
@@ -626,6 +648,8 @@ const BlockExplorer = () => {
         newBlocksProcessed < totalBlocksToProcess &&
         searchRangeCount < maxSearchRanges
       ) {
+        if (searchCancelRef.current) break;
+
         searchRangeCount++;
         let remainingNewBlocks = totalBlocksToProcess - newBlocksProcessed;
         let blocksToFetch: number[] = [];
@@ -665,6 +689,7 @@ const BlockExplorer = () => {
         const batchSize = 10;
         for (let i = 0; i < blocksToFetch.length; i += batchSize) {
           if (searchCancelRef.current) break;
+
           const batch = blocksToFetch.slice(i, i + batchSize);
           const batchPromises = batch.map(async (blockNumber) => {
             try {
@@ -804,6 +829,7 @@ const BlockExplorer = () => {
       status: "cancelled",
       message: "Search cancelled by user",
     }));
+    setIsLoading(false);
   };
 
   const handleNodeClick = (node: NodeDetails) => {
@@ -846,307 +872,372 @@ const BlockExplorer = () => {
     setShowAdvancedSearch(!showAdvancedSearch);
   };
 
+  const fetchBlockMeta = async (
+    blockNum: string,
+    setMeta: (meta: any) => void
+  ) => {
+    if (!web3 || !blockNum || isNaN(Number(blockNum))) {
+      setMeta(null);
+      return;
+    }
+    try {
+      const block = await web3.eth.getBlock(Number(blockNum));
+      if (block) setMeta({ timestamp: block.timestamp, number: block.number });
+      else setMeta(null);
+    } catch {
+      setMeta(null);
+    }
+  };
+
   const handleSearchRangeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setSearchRange((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
+    // Input validation
+    if (!/^[0-9]*$/.test(value) && value !== "") return;
+    let num = value === "" ? "" : Math.max(0, Number(value));
+    if (num !== "" && (isNaN(num) || num < 0)) return;
+    setSearchRange((prev) => ({ ...prev, [name]: num }));
+    setBlockRangeError(null);
+    if (name === "startBlock") fetchBlockMeta(num, setStartBlockMeta);
+    if (name === "endBlock") fetchBlockMeta(num, setEndBlockMeta);
+  };
+
+  useEffect(() => {
+    if (searchRange.startBlock)
+      fetchBlockMeta(searchRange.startBlock, setStartBlockMeta);
+    if (searchRange.endBlock)
+      fetchBlockMeta(searchRange.endBlock, setEndBlockMeta);
+    // Validate block range
+    const s = Number(searchRange.startBlock);
+    const e = Number(searchRange.endBlock);
+    if (
+      searchRange.startBlock !== "" &&
+      searchRange.endBlock !== "" &&
+      (!isFinite(s) || !isFinite(e) || s < 0 || e < 0 || s >= e)
+    ) {
+      setBlockRangeError(
+        "Start block must be less than end block, and both must be non-negative."
+      );
+    }
+  }, [searchRange.startBlock, searchRange.endBlock, web3]);
+
+  const validateBlockRange = async () => {
+    if (!web3) return false;
+    const latest = await web3.eth.getBlockNumber();
+    const s = Number(searchRange.startBlock);
+    const e = Number(searchRange.endBlock);
+    if (isNaN(s) || isNaN(e) || s < 0 || e < 0 || s >= e || e > latest) {
+      setBlockRangeError(
+        `Block range must be between 0 and ${latest}, start < end, and both non-negative.`
+      );
+      return false;
+    }
+    setBlockRangeError(null);
+    return true;
   };
 
   return (
-    <div className="w-full min-w-0 overflow-x-hidden">
-      <div className="bg-white p-6 rounded-lg shadow-md dark:bg-gray-800 dark:text-white">
-        <h1 className="text-2xl font-bold mb-4">Block Explorer</h1>
-
-        <div className="relative">
-          <div className="flex flex-col md:flex-row gap-2">
-            <div className="flex-1 relative">
-              <div className="flex">
-                <input
-                  id="search-input"
-                  type="text"
-                  value={searchInput}
-                  onChange={(e) =>
-                    setSearchInput(sanitizeSearchInput(e.target.value))
-                  }
-                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                  placeholder="Enter block number, transaction hash, or address..."
-                  className="w-full p-2 pr-10 border rounded-l focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                />
-                <button
-                  onClick={() => handleSearch()}
-                  disabled={isLoading}
-                  className="bg-indigo-600 text-white px-4 py-2 rounded-r hover:bg-indigo-700 transition flex items-center"
-                >
-                  {isLoading ? (
-                    <RefreshCw className="h-5 w-5 animate-spin" />
-                  ) : (
-                    <Search className="h-5 w-5" />
-                  )}
-                </button>
-              </div>
-
-              {showSearchHistory && (
-                <div
-                  ref={searchHistoryRef}
-                  className="absolute z-10 mt-1 w-full bg-white border rounded-md shadow-lg max-h-60 overflow-auto dark:bg-gray-700 dark:border-gray-600"
-                >
-                  {searchHistory.length === 0 ? (
-                    <div className="p-2 text-gray-500 dark:text-gray-400">
-                      No search history
-                    </div>
-                  ) : (
-                    <ul>
-                      {searchHistory.map((query, index) => (
-                        <li
-                          key={index}
-                          className="px-3 py-2 hover:bg-gray-100 cursor-pointer dark:hover:bg-gray-600"
-                          onClick={() => {
-                            const sanitized = sanitizeSearchInput(query);
-                            setSearchInput(sanitized);
-                            handleSearch(sanitized);
-                            setShowSearchHistory(false);
-                          }}
-                        >
-                          {query}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="flex space-x-2">
+    <div className="container mx-auto p-4">
+      <div className="bg-white p-6 rounded-lg shadow-md dark:bg-gray-800">
+        <div className="flex justify-between items-center mb-4">
+          <div className="relative w-full">
+            <div className="flex w-full">
+              <input
+                id="search-input"
+                type="text"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                onFocus={() => setShowSearchHistory(true)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSearch();
+                }}
+                placeholder="Enter block number, transaction hash, or address..."
+                className="w-full p-2 pr-10 border rounded-l focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+              />
               <button
-                onClick={toggleAdvancedSearch}
-                className="bg-gray-200 text-gray-700 px-3 py-2 rounded hover:bg-gray-300 transition flex items-center dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+                onClick={() => handleSearch()}
+                disabled={isLoading}
+                className="bg-indigo-600 text-white px-4 py-2 rounded-r hover:bg-indigo-700 transition flex items-center"
               >
-                <Filter className="h-4 w-4 mr-1" />
-                {showAdvancedSearch ? (
-                  <ChevronUp className="h-4 w-4" />
+                {isLoading ? (
+                  <RefreshCw className="h-5 w-5 animate-spin" />
                 ) : (
-                  <ChevronDown className="h-4 w-4" />
+                  <Search className="h-5 w-5" />
                 )}
               </button>
-
-              {blockData && (
-                <button
-                  onClick={captureGraph}
-                  className="bg-indigo-600 text-white px-3 py-2 rounded hover:bg-indigo-700 transition flex items-center"
-                >
-                  <Camera className="h-4 w-4 mr-1" />
-                  Capture
-                </button>
-              )}
             </div>
+
+            {showSearchHistory && (
+              <div
+                ref={searchHistoryRef}
+                className="absolute z-10 mt-1 w-full bg-white border rounded-md shadow-lg max-h-60 overflow-auto dark:bg-gray-700 dark:border-gray-600"
+              >
+                {searchHistory.length === 0 ? (
+                  <div className="p-2 text-gray-500 dark:text-gray-400">
+                    No search history
+                  </div>
+                ) : (
+                  <ul>
+                    {searchHistory.map((query, index) => (
+                      <li
+                        key={index}
+                        className="px-3 py-2 hover:bg-gray-100 cursor-pointer dark:hover:bg-gray-600"
+                        onClick={() => {
+                          const sanitized = sanitizeSearchInput(query);
+                          setSearchInput(sanitized);
+                          handleSearch(sanitized);
+                          setShowSearchHistory(false);
+                        }}
+                      >
+                        {query}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
           </div>
 
-          {showAdvancedSearch && (
-            <div className="mt-2 p-3 border rounded-md bg-gray-50 dark:bg-gray-700 dark:border-gray-600">
-              <h3 className="text-sm font-medium mb-2">
-                Advanced Search Options
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs mb-1">Start Block</label>
-                  <input
-                    type="number"
-                    name="startBlock"
-                    value={searchRange.startBlock}
-                    onChange={handleSearchRangeChange}
-                    placeholder="e.g., 15000000"
-                    className="w-full p-1.5 text-sm border rounded focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:bg-gray-800 dark:border-gray-600 dark:text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs mb-1">End Block</label>
-                  <input
-                    type="number"
-                    name="endBlock"
-                    value={searchRange.endBlock}
-                    onChange={handleSearchRangeChange}
-                    placeholder="e.g., 15001000"
-                    className="w-full p-1.5 text-sm border rounded focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:bg-gray-800 dark:border-gray-600 dark:text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs mb-1">Max Blocks</label>
-                  <input
-                    type="number"
-                    name="maxBlocks"
-                    value={searchRange.maxBlocks}
-                    onChange={handleSearchRangeChange}
-                    placeholder="Default: 1000"
-                    className="w-full p-1.5 text-sm border rounded focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:bg-gray-800 dark:border-gray-600 dark:text-white"
-                  />
-                </div>
-              </div>
-              <p className="text-xs text-gray-500 mt-2 dark:text-gray-400">
-                Specify a block range to search. For address searches, this
-                limits the blocks scanned for transactions.
-              </p>
-            </div>
-          )}
+          <div className="flex space-x-2">
+            <button
+              onClick={toggleAdvancedSearch}
+              className="bg-gray-200 text-gray-700 px-3 py-2 rounded hover:bg-gray-300 transition flex items-center dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+            >
+              <Filter className="h-4 w-4 mr-1" />
+              {showAdvancedSearch ? (
+                <ChevronUp className="h-4 w-4" />
+              ) : (
+                <ChevronDown className="h-4 w-4" />
+              )}
+            </button>
+
+            {blockData && (
+              <button
+                onClick={captureGraph}
+                className="bg-indigo-600 text-white px-3 py-2 rounded hover:bg-indigo-700 transition flex items-center"
+              >
+                <Camera className="h-4 w-4 mr-1" />
+                Capture
+              </button>
+            )}
+          </div>
         </div>
 
-        {searchProgress.status !== "idle" && (
-          <div className="mt-2 p-2 border rounded-md bg-gray-50 dark:bg-gray-700 dark:border-gray-600">
-            <div className="flex justify-between items-center mb-1">
-              <div className="flex items-center">
-                {searchProgress.status === "searching" && (
-                  <>
-                    <RefreshCw className="h-4 w-4 mr-1 animate-spin text-indigo-600 dark:text-indigo-400" />
-                    <span className="text-sm font-medium">Searching...</span>
-                  </>
-                )}
-                {searchProgress.status === "completed" && (
-                  <>
-                    <CheckCircle className="h-4 w-4 mr-1 text-green-600 dark:text-green-400" />
-                    <span className="text-sm font-medium">
-                      Search completed
-                    </span>
-                  </>
-                )}
-                {searchProgress.status === "cancelled" && (
-                  <>
-                    <StopCircle className="h-4 w-4 mr-1 text-amber-600 dark:text-amber-400" />
-                    <span className="text-sm font-medium">
-                      Search cancelled
-                    </span>
-                  </>
-                )}
-                {searchProgress.status === "error" && (
-                  <>
-                    <AlertTriangle className="h-4 w-4 mr-1 text-red-600 dark:text-red-400" />
-                    <span className="text-sm font-medium">Search error</span>
-                  </>
+        {showAdvancedSearch && (
+          <div className="mt-2 p-3 border rounded-md bg-gray-50 dark:bg-gray-700 dark:border-gray-600">
+            <h3 className="text-sm font-medium mb-2">
+              Advanced Search Options
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs mb-1">Start Block</label>
+                <input
+                  type="number"
+                  name="startBlock"
+                  value={searchRange.startBlock}
+                  onChange={handleSearchRangeChange}
+                  placeholder="e.g., 15000000"
+                  className="w-full p-1.5 text-sm border rounded focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:bg-gray-800 dark:border-gray-600 dark:text-white"
+                  min={0}
+                />
+                {startBlockMeta && startBlockMeta.timestamp && (
+                  <div className="text-xs text-gray-500 mt-1 dark:text-gray-400">
+                    Block Timestamp: {formatTimestamp(startBlockMeta.timestamp)}
+                  </div>
                 )}
               </div>
-
-              {searchProgress.status === "searching" && (
-                <button
-                  onClick={cancelSearch}
-                  className="text-red-600 hover:text-re d-800 text-sm flex items-center dark:text-red-400 dark:hover:text-red-300"
-                >
-                  <X className="h-4 w-4 mr-1" />
-                  Cancel
-                </button>
-              )}
-            </div>
-
-            {searchProgress.status === "searching" && (
-              <>
-                <div className="w-full bg-gray-200 rounded-full h-2.5 mb-1 dark:bg-gray-600">
-                  <div
-                    className="bg-indigo-600 h-2.5 rounded-full dark:bg-indigo-500"
-                    style={{
-                      width: `${
-                        searchProgress.blocksTotal > 0
-                          ? Math.min(
-                              100,
-                              (searchProgress.blocksProcessed /
-                                searchProgress.blocksTotal) *
-                                100
-                            )
-                          : 0
-                      }%`,
-                    }}
-                  />
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span>
-                    {searchProgress.blocksProcessed.toLocaleString()} /{" "}
-                    {searchProgress.blocksTotal.toLocaleString()} blocks
-                  </span>
-                  <span>
-                    {searchProgress.transactionsFound.toLocaleString()}{" "}
-                    transactions found
-                  </span>
-                </div>
-              </>
-            )}
-
-            {searchProgress.message && (
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                {searchProgress.message}
-              </p>
-            )}
-          </div>
-        )}
-
-        {error && (
-          <div className="mt-4 p-3 bg-red-100 text-red-700 rounded flex items-start dark:bg-red-900 dark:text-red-200">
-            <AlertTriangle className="h-5 w-5 mr-2 flex-shrink-0 mt-0.5" />
-            <p>{error}</p>
-          </div>
-        )}
-
-        {blockData && (
-          <div className="mt-6">
-            <div className="bg-gray-50 p-4 rounded-lg border dark:bg-gray-700 dark:border-gray-600">
-              <div ref={graphRef} className="w-full h-[600px]">
-                <BlockGraph
-                  data={blockData}
-                  onNodeClick={handleNodeClick}
-                  onNodeDoubleClick={handleNodeDoubleClick}
+              <div>
+                <label className="block text-xs mb-1">End Block</label>
+                <input
+                  type="number"
+                  name="endBlock"
+                  value={searchRange.endBlock}
+                  onChange={handleSearchRangeChange}
+                  placeholder="e.g., 15001000"
+                  className="w-full p-1.5 text-sm border rounded focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:bg-gray-800 dark:border-gray-600 dark:text-white"
+                  min={0}
+                />
+                {endBlockMeta && endBlockMeta.timestamp && (
+                  <div className="text-xs text-gray-500 mt-1 dark:text-gray-400">
+                    Block Timestamp: {formatTimestamp(endBlockMeta.timestamp)}
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="block text-xs mb-1">Max Blocks</label>
+                <input
+                  type="number"
+                  name="maxBlocks"
+                  value={searchRange.maxBlocks}
+                  onChange={handleSearchRangeChange}
+                  placeholder="Default: 1000"
+                  className="w-full p-1.5 text-sm border rounded focus:ring-2 focus:ring-indigo-500 focus:outline-none dark:bg-gray-800 dark:border-gray-600 dark:text-white"
                 />
               </div>
             </div>
-
-            {selectedNodeDetails && (
-              <div className="mt-4 p-4 bg-white rounded-lg border dark:bg-gray-800 dark:border-gray-600">
-                <h3 className="text-lg font-medium mb-2">
-                  Selected Node Details
-                </h3>
-                <div className="space-y-2">
-                  <p>
-                    <span className="font-medium">Type:</span>{" "}
-                    {selectedNodeDetails.type}
-                  </p>
-                  {selectedNodeDetails.id && (
-                    <p>
-                      <span className="font-medium">ID:</span>{" "}
-                      {selectedNodeDetails.id}
-                    </p>
-                  )}
-                  {selectedNodeDetails.hash && (
-                    <p>
-                      <span className="font-medium">Hash:</span>{" "}
-                      {selectedNodeDetails.hash}
-                    </p>
-                  )}
-                  {selectedNodeDetails.blockNumber !== undefined && (
-                    <p>
-                      <span className="font-medium">Block Number:</span>{" "}
-                      {selectedNodeDetails.blockNumber}
-                    </p>
-                  )}
-                  {selectedNodeDetails.value && (
-                    <p>
-                      <span className="font-medium">Value:</span>{" "}
-                      {selectedNodeDetails.value}
-                    </p>
-                  )}
-                  {selectedNodeDetails.timestamp && (
-                    <p>
-                      <span className="font-medium">Timestamp:</span>{" "}
-                      {formatTimestamp(selectedNodeDetails.timestamp)}
-                    </p>
-                  )}
-                  {selectedNodeDetails.role && (
-                    <p>
-                      <span className="font-medium">Role:</span>{" "}
-                      {selectedNodeDetails.role}
-                    </p>
-                  )}
-                </div>
+            <p className="text-xs text-gray-500 mt-2 dark:text-gray-400">
+              Specify a block range to search. For address searches, this limits
+              the blocks scanned for transactions.
+            </p>
+            {blockRangeError && (
+              <div className="text-xs text-red-600 mt-1 dark:text-red-400">
+                {blockRangeError}
               </div>
             )}
           </div>
         )}
       </div>
+
+      {searchProgress.status !== "idle" && (
+        <div className="mt-2 p-2 border rounded-md bg-gray-50 dark:bg-gray-700 dark:border-gray-600">
+          <div className="flex justify-between items-center mb-1">
+            <div className="flex items-center">
+              {searchProgress.status === "searching" && (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-1 animate-spin text-indigo-600 dark:text-indigo-400" />
+                  <span className="text-sm font-medium">Searching...</span>
+                </>
+              )}
+              {searchProgress.status === "completed" && (
+                <>
+                  <CheckCircle className="h-4 w-4 mr-1 text-green-600 dark:text-green-400" />
+                  <span className="text-sm font-medium">Search completed</span>
+                </>
+              )}
+              {searchProgress.status === "cancelled" && (
+                <>
+                  <StopCircle className="h-4 w-4 mr-1 text-amber-600 dark:text-amber-400" />
+                  <span className="text-sm font-medium">Search cancelled</span>
+                </>
+              )}
+              {searchProgress.status === "error" && (
+                <>
+                  <AlertTriangle className="h-4 w-4 mr-1 text-red-600 dark:text-red-400" />
+                  <span className="text-sm font-medium">Search error</span>
+                </>
+              )}
+            </div>
+
+            {searchProgress.status === "searching" && (
+              <button
+                onClick={cancelSearch}
+                className="text-red-600 hover:text-re d-800 text-sm flex items-center dark:text-red-400 dark:hover:text-red-300"
+              >
+                <X className="h-4 w-4 mr-1" />
+                Cancel
+              </button>
+            )}
+          </div>
+
+          {searchProgress.status === "searching" && (
+            <>
+              <div className="w-full bg-gray-200 rounded-full h-2.5 mb-1 dark:bg-gray-600">
+                <div
+                  className="bg-indigo-600 h-2.5 rounded-full dark:bg-indigo-500"
+                  style={{
+                    width: `${
+                      searchProgress.blocksTotal > 0
+                        ? Math.min(
+                            100,
+                            (searchProgress.blocksProcessed /
+                              searchProgress.blocksTotal) *
+                              100
+                          )
+                        : 0
+                    }%`,
+                  }}
+                />
+              </div>
+              <div className="flex justify-between text-xs">
+                <span>
+                  {searchProgress.blocksProcessed.toLocaleString()} /{" "}
+                  {searchProgress.blocksTotal.toLocaleString()} blocks
+                </span>
+                <span>
+                  {searchProgress.transactionsFound.toLocaleString()}{" "}
+                  transactions found
+                </span>
+              </div>
+            </>
+          )}
+
+          {searchProgress.message && (
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              {searchProgress.message}
+            </p>
+          )}
+        </div>
+      )}
+
+      {error && (
+        <div className="mt-4 p-3 bg-red-100 text-red-700 rounded flex items-start dark:bg-red-900 dark:text-red-200">
+          <AlertTriangle className="h-5 w-5 mr-2 flex-shrink-0 mt-0.5" />
+          <p>{error}</p>
+        </div>
+      )}
+
+      {blockData && (
+        <div className="mt-6">
+          <div className="bg-gray-50 p-4 rounded-lg border dark:bg-gray-700 dark:border-gray-600">
+            <div ref={graphRef} className="w-full h-[600px]">
+              <BlockGraph
+                data={blockData}
+                onNodeClick={handleNodeClick}
+                onNodeDoubleClick={handleNodeDoubleClick}
+              />
+            </div>
+          </div>
+
+          {selectedNodeDetails && (
+            <div className="mt-4 p-4 bg-white rounded-lg border dark:bg-gray-800 dark:border-gray-600">
+              <h3 className="text-lg font-medium mb-2">
+                Selected Node Details
+              </h3>
+              <div className="space-y-2">
+                <p>
+                  <span className="font-medium">Type:</span>{" "}
+                  {selectedNodeDetails.type}
+                </p>
+                {selectedNodeDetails.id && (
+                  <p>
+                    <span className="font-medium">ID:</span>{" "}
+                    {selectedNodeDetails.id}
+                  </p>
+                )}
+                {selectedNodeDetails.hash && (
+                  <p>
+                    <span className="font-medium">Hash:</span>{" "}
+                    {selectedNodeDetails.hash}
+                  </p>
+                )}
+                {selectedNodeDetails.blockNumber !== undefined && (
+                  <p>
+                    <span className="font-medium">Block Number:</span>{" "}
+                    {selectedNodeDetails.blockNumber}
+                  </p>
+                )}
+                {selectedNodeDetails.value && (
+                  <p>
+                    <span className="font-medium">Value:</span>{" "}
+                    {selectedNodeDetails.value}
+                  </p>
+                )}
+                {selectedNodeDetails.timestamp && (
+                  <p>
+                    <span className="font-medium">Timestamp:</span>{" "}
+                    {formatTimestamp(selectedNodeDetails.timestamp)}
+                  </p>
+                )}
+                {selectedNodeDetails.role && (
+                  <p>
+                    <span className="font-medium">Role:</span>{" "}
+                    {selectedNodeDetails.role}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };

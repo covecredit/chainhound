@@ -661,32 +661,24 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({
   // Export cache to a file
   const exportCache = async () => {
     try {
-      logDebug("Exporting block cache...");
       const blocks = await blockCache.getAllBlocks();
-
-      if (blocks.length === 0) {
-        throw new Error("No blocks in cache to export");
-      }
-
-      const cacheData = {
-        version: 1,
-        timestamp: new Date().toISOString(),
-        blocks,
-      };
-
-      const json = JSON.stringify(cacheData);
-      const blob = new Blob([json], { type: "application/json" });
-
-      // Create a zip file to reduce size
-      const zip = new JSZip();
-      zip.file("chainhound-cache.json", blob);
-      const zipBlob = await zip.generateAsync({ type: "blob" });
-
-      saveAs(zipBlob, `chainhound-cache-${Date.now()}.zip`);
-      logDebug(`Exported ${blocks.length} blocks from cache`);
+      const data = JSON.stringify(blocks, null, 2);
+      const blob = new Blob([data], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `chainhound-block-cache-${Date.now()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      console.log(
+        "[ChainHound Debug] Exported cache with",
+        blocks.length,
+        "blocks"
+      );
     } catch (error) {
-      console.error("Failed to export cache:", error);
-      logDebug("Export cache failed:", error);
+      console.error("[ChainHound Debug] Export cache failed:", error);
       throw error;
     }
   };
@@ -694,55 +686,17 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({
   // Import cache from a file
   const importCache = async (file: File) => {
     try {
-      logDebug("Importing block cache...");
-
-      if (file.type === "application/zip" || file.name.endsWith(".zip")) {
-        // Handle zip file
-        const zip = new JSZip();
-        const zipContents = await zip.loadAsync(file);
-
-        // Find the JSON file in the zip
-        const jsonFile = Object.values(zipContents.files).find(
-          (f) => !f.dir && f.name.endsWith(".json")
-        );
-
-        if (!jsonFile) {
-          throw new Error("No JSON file found in the zip archive");
-        }
-
-        const jsonContent = await jsonFile.async("string");
-        const cacheData = JSON.parse(jsonContent);
-
-        if (!cacheData.blocks || !Array.isArray(cacheData.blocks)) {
-          throw new Error("Invalid cache file format");
-        }
-
-        // Import blocks to cache
-        await blockCache.cacheBlocks(cacheData.blocks);
-        logDebug(`Imported ${cacheData.blocks.length} blocks to cache`);
-      } else {
-        // Handle JSON file directly
-        const reader = new FileReader();
-
-        const jsonContent = await new Promise<string>((resolve, reject) => {
-          reader.onload = (e) => resolve(e.target?.result as string);
-          reader.onerror = reject;
-          reader.readAsText(file);
-        });
-
-        const cacheData = JSON.parse(jsonContent);
-
-        if (!cacheData.blocks || !Array.isArray(cacheData.blocks)) {
-          throw new Error("Invalid cache file format");
-        }
-
-        // Import blocks to cache
-        await blockCache.cacheBlocks(cacheData.blocks);
-        logDebug(`Imported ${cacheData.blocks.length} blocks to cache`);
-      }
+      const text = await file.text();
+      const blocks = JSON.parse(text);
+      if (!Array.isArray(blocks)) throw new Error("Invalid cache file format");
+      await blockCache.cacheBlocks(blocks);
+      console.log(
+        "[ChainHound Debug] Imported cache with",
+        blocks.length,
+        "blocks"
+      );
     } catch (error) {
-      console.error("Failed to import cache:", error);
-      logDebug("Import cache failed:", error);
+      console.error("[ChainHound Debug] Import cache failed:", error);
       throw error;
     }
   };
