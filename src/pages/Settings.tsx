@@ -28,6 +28,8 @@ const Settings = () => {
     setDebugMode,
     autoReconnect,
     setAutoReconnect,
+    secureConnectionsOnly,
+    setSecureConnectionsOnly,
     resetSettings,
     exportCache,
     importCache,
@@ -43,7 +45,7 @@ const Settings = () => {
   const [saveMessage, setSaveMessage] = useState({ type: "", text: "" });
   const [localDebugMode, setLocalDebugMode] = useState(debugMode);
   const [localAutoReconnect, setLocalAutoReconnect] = useState(autoReconnect);
-  const [secureConnectionsOnly, setSecureConnectionsOnly] = useState(true);
+  const [localSecureConnectionsOnly, setLocalSecureConnectionsOnly] = useState(secureConnectionsOnly);
   const [retryErrorBlocks, setRetryErrorBlocks] = useState(true);
   const [cacheStats, setCacheStats] = useState({
     totalBlocks: 0,
@@ -102,7 +104,7 @@ const Settings = () => {
       "chainhound_secure_connections_only"
     );
     if (savedSecureConnectionsOnly !== null) {
-      setSecureConnectionsOnly(savedSecureConnectionsOnly === "true");
+      setLocalSecureConnectionsOnly(savedSecureConnectionsOnly === "true");
     }
 
     const savedRetryErrorBlocks = localStorage.getItem(
@@ -142,13 +144,13 @@ const Settings = () => {
 
     try {
       // Validate provider URL
-      if (secureConnectionsOnly && web3Provider.startsWith("http://")) {
+      if (localSecureConnectionsOnly && web3Provider.startsWith("http://")) {
         throw new Error(
           "Insecure HTTP connections are not allowed. Please use HTTPS."
         );
       }
 
-      if (secureConnectionsOnly && web3Provider.startsWith("ws://")) {
+      if (localSecureConnectionsOnly && web3Provider.startsWith("ws://")) {
         throw new Error(
           "Insecure WebSocket connections are not allowed. Please use WSS."
         );
@@ -173,7 +175,7 @@ const Settings = () => {
       localStorage.setItem("chainhound_dark_mode", String(darkMode));
       localStorage.setItem(
         "chainhound_secure_connections_only",
-        String(secureConnectionsOnly)
+        String(localSecureConnectionsOnly)
       );
       localStorage.setItem(
         "chainhound_retry_error_blocks",
@@ -188,6 +190,9 @@ const Settings = () => {
 
       // Apply auto-reconnect
       setAutoReconnect(localAutoReconnect);
+
+      // Apply secure connections only
+      setSecureConnectionsOnly(localSecureConnectionsOnly);
 
       setSaveMessage({ type: "success", text: "Settings saved successfully!" });
     } catch (error: any) {
@@ -219,7 +224,7 @@ const Settings = () => {
     }
 
     // Validate if secure connections only is enabled
-    if (secureConnectionsOnly) {
+    if (localSecureConnectionsOnly) {
       if (newCustomProvider.startsWith("http://")) {
         setSaveMessage({
           type: "error",
@@ -374,7 +379,7 @@ const Settings = () => {
           type: "success",
           text: `Fixed ${fixed} error blocks!`,
         });
-      } catch (error) {
+      } catch (error: any) {
         setSaveMessage({
           type: "error",
           text: error.message || "Failed to fix error blocks.",
@@ -392,6 +397,7 @@ const Settings = () => {
       setWeb3Provider(provider);
       setLocalDebugMode(debugMode);
       setLocalAutoReconnect(autoReconnect);
+      setLocalSecureConnectionsOnly(secureConnectionsOnly);
       setDarkMode(document.documentElement.classList.contains("dark"));
       setRetryErrorBlocks(true);
 
@@ -447,8 +453,8 @@ const Settings = () => {
                 <input
                   type="checkbox"
                   id="secureConnectionsOnly"
-                  checked={secureConnectionsOnly}
-                  onChange={(e) => setSecureConnectionsOnly(e.target.checked)}
+                  checked={localSecureConnectionsOnly}
+                  onChange={(e) => setLocalSecureConnectionsOnly(e.target.checked)}
                   className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600"
                 />
                 <label
@@ -472,7 +478,7 @@ const Settings = () => {
                   <optgroup label="Default Providers">
                     {availableProviders
                       .filter(
-                        (p) => !secureConnectionsOnly || isSecureProvider(p.url)
+                        (p) => !localSecureConnectionsOnly || isSecureProvider(p.url)
                       )
                       .map((p, index) => (
                         <option key={`default-${index}`} value={p.url}>
@@ -485,7 +491,7 @@ const Settings = () => {
                     <optgroup label="Custom Providers">
                       {customProviders
                         .filter(
-                          (p) => !secureConnectionsOnly || isSecureProvider(p)
+                          (p) => !localSecureConnectionsOnly || isSecureProvider(p)
                         )
                         .map((p, index) => (
                           <option key={`custom-${index}`} value={p}>
@@ -532,7 +538,7 @@ const Settings = () => {
                     <Plus className="h-5 w-5" />
                   </button>
                 </div>
-                {secureConnectionsOnly && (
+                {localSecureConnectionsOnly && (
                   <p className="mt-1 text-xs text-amber-600 dark:text-amber-400 flex items-center">
                     <AlertTriangle className="h-3 w-3 mr-1" />
                     Only secure URLs (https:// or wss://) are allowed
@@ -855,7 +861,7 @@ const Settings = () => {
                   <span>Reset to Defaults</span>
                 </button>
               ) : (
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center gap-2">
                   <span className="text-sm text-red-600 dark:text-red-400">
                     Confirm reset?
                   </span>

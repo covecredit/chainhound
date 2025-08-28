@@ -25,12 +25,13 @@ export default defineConfig({
     },
   },
   server: {
-    host: '0.0.0.0',
-    port: 3000,
+    host: "localhost",
+    port: 4000,
     open: false,
     hmr: {
-      host: '0.0.0.0',
-      protocol: 'ws'
-    }
-  }
+      host: "localhost",
+      port: 4000,
+      protocol: "ws",
+    },
+  },
 });

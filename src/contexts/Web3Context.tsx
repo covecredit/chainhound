@@ -30,8 +30,8 @@ export const DEFAULT_SETTINGS = {
   autoRefresh: true,
   maxRetries: 5,
   retryDelay: 2000,
-  batchSize: 3, // Reduced batch size for better reliability
-  maxConcurrentRequests: 2, // Limit concurrent requests
+  batchSize: 50, // Increased from 3 for better performance
+  maxConcurrentRequests: 8, // Increased from 2 for parallel processing
 };
 
 interface NetworkInfo {
@@ -110,6 +110,10 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({
   );
   const [isReconnecting, setIsReconnecting] = useState<boolean>(false);
   const [reconnectAttempts, setReconnectAttempts] = useState<number>(0);
+  const [secureConnectionsOnly, setSecureConnectionsOnlyState] =
+    useState<boolean>(
+      localStorage.getItem("chainhound_secure_connections_only") !== "false"
+    );
   const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
   const maxReconnectAttempts = 5;
   const currentProviderRef = useRef<string>(provider);
@@ -399,16 +403,40 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({
         // Clean up existing connections
         cleanupConnections();
 
-        // Ensure we're using secure connections when possible
+        // Strictly enforce secure connections only setting
+        if (secureConnectionsOnly) {
+          if (url.startsWith("http://") || url.startsWith("ws://")) {
+            throw new Error(
+              `Insecure connection blocked: ${url}. Please use HTTPS/WSS or disable 'Secure Connections Only' in settings.`
+            );
+          }
+        }
+
+        // Ensure we're using secure connections only when the setting is enabled
         let secureUrl = url;
-        if (url.startsWith("http://")) {
-          const secureVersion = url.replace("http://", "https://");
-          logDebug(`Converting insecure URL to secure: ${secureVersion}`);
-          secureUrl = secureVersion;
-        } else if (url.startsWith("ws://")) {
-          const secureVersion = url.replace("ws://", "wss://");
-          logDebug(`Converting insecure WebSocket to secure: ${secureVersion}`);
-          secureUrl = secureVersion;
+        if (secureConnectionsOnly) {
+          if (url.startsWith("http://")) {
+            const secureVersion = url.replace("http://", "https://");
+            logDebug(`Converting insecure URL to secure: ${secureVersion}`);
+            secureUrl = secureVersion;
+          } else if (url.startsWith("ws://")) {
+            const secureVersion = url.replace("ws://", "wss://");
+            logDebug(
+              `Converting insecure WebSocket to secure: ${secureVersion}`
+            );
+            secureUrl = secureVersion;
+          }
+        }
+
+        // Always upgrade WebSocket connections to secure if page is loaded via HTTPS
+        if (
+          window.location.protocol === "https:" &&
+          secureUrl.startsWith("ws://")
+        ) {
+          secureUrl = secureUrl.replace("ws://", "wss://");
+          logDebug(
+            `Upgraded WebSocket to secure connection for HTTPS page: ${secureUrl}`
+          );
         }
 
         let newWeb3;
@@ -614,6 +642,12 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({
     localStorage.setItem("chainhound_auto_reconnect", String(enabled));
   };
 
+  // Set secure connections only setting
+  const setSecureConnectionsOnly = (enabled: boolean) => {
+    setSecureConnectionsOnlyState(enabled);
+    localStorage.setItem("chainhound_secure_connections_only", String(enabled));
+  };
+
   // Update debug mode setting
   const toggleDebugMode = (enabled: boolean) => {
     setDebugMode(enabled);
@@ -763,6 +797,8 @@ export const Web3Provider: React.FC<{ children: ReactNode }> = ({
         setAutoReconnect,
         reconnectProvider,
         isReconnecting,
+        secureConnectionsOnly,
+        setSecureConnectionsOnly,
         resetSettings,
         exportCache,
         importCache,

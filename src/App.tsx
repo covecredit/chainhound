@@ -5,6 +5,9 @@ import Navbar from "./components/Navbar";
 import Dashboard from "./pages/Dashboard";
 import BlockExplorer from "./pages/BlockExplorer";
 import CaseManager from "./pages/CaseManager";
+import TagManager from "./pages/TagManager";
+import SmartContractAuditor from "./pages/SmartContractAuditor";
+import BlockWatcher from "./pages/BlockWatcher";
 import Settings from "./pages/Settings";
 import Footer from "./components/Footer";
 import StatusBar from "./components/StatusBar";
@@ -149,6 +152,9 @@ const App: React.FC = () => {
                   <Route path="/blocks" element={<BlockExplorer />} />
                   <Route path="/transactions" element={<BlockExplorer />} />
                   <Route path="/cases" element={<CaseManager />} />
+                  <Route path="/tags" element={<TagManager />} />
+                  <Route path="/smart-contract-auditor" element={<SmartContractAuditor />} />
+                  <Route path="/block-watcher" element={<BlockWatcher />} />
                   <Route path="/settings" element={<Settings />} />
                 </Routes>
               </div>

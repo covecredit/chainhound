@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Clock, FileText, Network, AlertTriangle } from 'lucide-react';
+import { Search, Clock, FileText, Network, AlertTriangle, Code, Tag } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useWeb3Context } from '../contexts/Web3Context';
 
@@ -186,7 +186,7 @@ const Dashboard = () => {
         </div>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div 
           className="bg-white p-4 rounded-lg shadow-md dark:bg-gray-800 dark:text-white cursor-pointer hover:shadow-lg transition"
           onClick={() => navigate('/blocks')}
@@ -195,8 +195,34 @@ const Dashboard = () => {
             <Network className="h-6 w-6" />
           </div>
           <h3 className="text-lg font-medium">Block Explorer</h3>
-          <p className="mt-2 text-gray-600 dark:text-gray-300">
-            Visualize blockchain data with interactive graphs and identify patterns.
+          <p className="mt-2 text-gray-600 dark:text-gray-300 text-sm">
+            Search and visualize blockchain data with interactive graphs.
+          </p>
+        </div>
+        
+        <div 
+          className="bg-white p-4 rounded-lg shadow-md dark:bg-gray-800 dark:text-white cursor-pointer hover:shadow-lg transition"
+          onClick={() => navigate('/block-watcher')}
+        >
+          <div className="flex items-center justify-center h-12 w-12 rounded-md bg-green-100 text-green-600 mb-4 dark:bg-green-900 dark:text-green-300">
+            <Search className="h-6 w-6" />
+          </div>
+          <h3 className="text-lg font-medium">Block Watcher</h3>
+          <p className="mt-2 text-gray-600 dark:text-gray-300 text-sm">
+            Monitor blockchain in real-time with live block tracking.
+          </p>
+        </div>
+        
+        <div 
+          className="bg-white p-4 rounded-lg shadow-md dark:bg-gray-800 dark:text-white cursor-pointer hover:shadow-lg transition"
+          onClick={() => navigate('/smart-contract-auditor')}
+        >
+          <div className="flex items-center justify-center h-12 w-12 rounded-md bg-purple-100 text-purple-600 mb-4 dark:bg-purple-900 dark:text-purple-300">
+            <Code className="h-6 w-6" />
+          </div>
+          <h3 className="text-lg font-medium">Smart Contract Auditor</h3>
+          <p className="mt-2 text-gray-600 dark:text-gray-300 text-sm">
+            Decompile and analyze smart contracts for vulnerabilities.
           </p>
         </div>
         
@@ -204,12 +230,27 @@ const Dashboard = () => {
           className="bg-white p-4 rounded-lg shadow-md dark:bg-gray-800 dark:text-white cursor-pointer hover:shadow-lg transition"
           onClick={() => navigate('/cases')}
         >
-          <div className="flex items-center justify-center h-12 w-12 rounded-md bg-indigo-100 text-indigo-600 mb-4 dark:bg-indigo-900 dark:text-indigo-300">
+          <div className="flex items-center justify-center h-12 w-12 rounded-md bg-orange-100 text-orange-600 mb-4 dark:bg-orange-900 dark:text-orange-300">
             <FileText className="h-6 w-6" />
           </div>
           <h3 className="text-lg font-medium">Case Management</h3>
+          <p className="mt-2 text-gray-600 dark:text-gray-300 text-sm">
+            Create and manage forensic cases with detailed notes.
+          </p>
+        </div>
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div 
+          className="bg-white p-4 rounded-lg shadow-md dark:bg-gray-800 dark:text-white cursor-pointer hover:shadow-lg transition"
+          onClick={() => navigate('/tags')}
+        >
+          <div className="flex items-center justify-center h-12 w-12 rounded-md bg-blue-100 text-blue-600 mb-4 dark:bg-blue-900 dark:text-blue-300">
+            <Tag className="h-6 w-6" />
+          </div>
+          <h3 className="text-lg font-medium">Tag Manager</h3>
           <p className="mt-2 text-gray-600 dark:text-gray-300">
-            Create and manage forensic cases with detailed notes and evidence.
+            Tag and organize addresses, transactions, and contracts for analysis.
           </p>
         </div>
         

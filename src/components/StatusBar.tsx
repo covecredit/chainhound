@@ -1,17 +1,16 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Server,
+  Wifi,
+  Zap,
   Clock,
   Database,
-  Wifi,
-  WifiOff,
-  Zap,
-  RefreshCw,
-  AlertTriangle,
   HardDrive,
-  Trash2,
+  AlertTriangle,
+  RefreshCw,
   Download,
   Upload,
+  Trash2,
   Wrench,
 } from "lucide-react";
 import { useWeb3Context } from "../contexts/Web3Context";
@@ -49,6 +48,7 @@ const StatusBar = () => {
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isFixingErrors, setIsFixingErrors] = useState(false);
+  const [isResettingCache, setIsResettingCache] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -172,7 +172,7 @@ const StatusBar = () => {
 
   // Fix error blocks handler (uses block explorer logic)
   const handleFixErrorBlocks = async () => {
-    if (!window.web3) {
+    if (!web3) {
       alert("Web3 provider not available.");
       return;
     }
@@ -185,14 +185,22 @@ const StatusBar = () => {
       let fixed = 0;
       for (const err of errorBlocks) {
         try {
-          const block = await window.web3.eth.getBlock(err.blockNumber, true);
+          // Ensure blockNumber is a number
+          const blockNumber = Number(err.blockNumber);
+          if (isNaN(blockNumber)) {
+            console.warn(`Invalid block number in error record: ${err.blockNumber}`);
+            continue;
+          }
+          
+          const block = await web3.eth.getBlock(blockNumber, true);
           if (block) {
             await blockCache.cacheBlock(block);
-            await blockCache.removeErrorBlock(err.blockNumber);
+            await blockCache.removeErrorBlock(blockNumber);
             fixed++;
           }
         } catch (e) {
           // Ignore, will remain in error list
+          console.warn(`Failed to fix error block ${err.blockNumber}:`, e);
         }
       }
       await loadCacheStats();
@@ -204,6 +212,26 @@ const StatusBar = () => {
       );
     } finally {
       setIsFixingErrors(false);
+    }
+  };
+
+  const handleResetCache = async () => {
+    if (!window.confirm("This will completely reset the block cache. All cached blocks and error records will be deleted. This action cannot be undone. Continue?")) {
+      return;
+    }
+
+    setIsResettingCache(true);
+    try {
+      await blockCache.resetCache();
+      await loadCacheStats();
+      alert("Cache reset successfully!");
+    } catch (err) {
+      alert(
+        "Failed to reset cache: " +
+          (err instanceof Error ? err.message : err)
+      );
+    } finally {
+      setIsResettingCache(false);
     }
   };
 
@@ -324,7 +352,10 @@ const StatusBar = () => {
               <Download className="h-3 w-3 mr-1" />
               <span className="sr-only">Export</span>
             </button>
-            <label className="flex items-center whitespace-nowrap status-bar-item text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 px-1 py-0.5 cursor-pointer">
+            <label
+              className="flex items-center whitespace-nowrap status-bar-item text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 px-1 py-0.5 cursor-pointer"
+              title="Import block cache"
+            >
               <Upload className="h-3 w-3 mr-1" />
               <span className="sr-only">Import</span>
               <input
@@ -346,12 +377,13 @@ const StatusBar = () => {
               <span className="sr-only">Fix Errors</span>
             </button>
             <button
-              onClick={handleClearCache}
-              className="flex items-center whitespace-nowrap status-bar-item text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 px-1 py-0.5"
-              title="Delete block cache"
+              onClick={handleResetCache}
+              disabled={isResettingCache}
+              className="flex items-center whitespace-nowrap status-bar-item text-orange-600 hover:text-orange-800 dark:text-orange-400 dark:hover:text-orange-300 px-1 py-0.5"
+              title="Reset cache (clears all cached blocks and error records)"
             >
-              <Trash2 className="h-3 w-3 mr-1" />
-              <span>Delete</span>
+              <RefreshCw className={`h-3 w-3 mr-1 ${isResettingCache ? 'animate-spin' : ''}`} />
+              <span>Reset</span>
             </button>
           </div>
         </div>

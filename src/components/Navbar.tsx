@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, Network, Layers, FolderKanban, Settings } from 'lucide-react';
+import { Home, Network, Layers, FolderKanban, Settings, Tag, Code, Search } from 'lucide-react';
 
 interface NavbarProps {
   onNavItemClick?: () => void;
@@ -38,6 +38,28 @@ const Navbar: React.FC<NavbarProps> = ({ onNavItemClick, collapsed = false }) =>
             title="Block Explorer"
           >
             <Network className="h-5 w-5" />
+          </NavLink>
+          
+          <NavLink 
+            to="/block-watcher" 
+            className={({ isActive }) => 
+              `flex items-center justify-center p-2 rounded-md ${isActive ? 'bg-indigo-700' : 'hover:bg-gray-700'}`
+            }
+            onClick={handleNavClick}
+            title="Block Watcher"
+          >
+            <Search className="h-5 w-5" />
+          </NavLink>
+          
+          <NavLink 
+            to="/smart-contract-auditor" 
+            className={({ isActive }) => 
+              `flex items-center justify-center p-2 rounded-md ${isActive ? 'bg-indigo-700' : 'hover:bg-gray-700'}`
+            }
+            onClick={handleNavClick}
+            title="Smart Contract Auditor"
+          >
+            <Code className="h-5 w-5" />
           </NavLink>
           
           <NavLink 
@@ -96,6 +118,30 @@ const Navbar: React.FC<NavbarProps> = ({ onNavItemClick, collapsed = false }) =>
                 Block Explorer
               </NavLink>
             </li>
+            <li>
+              <NavLink 
+                to="/block-watcher" 
+                className={({ isActive }) => 
+                  `flex items-center px-3 py-2 rounded-md ${isActive ? 'bg-indigo-700' : 'hover:bg-gray-700'}`
+                }
+                onClick={handleNavClick}
+              >
+                <Search className="h-5 w-5 mr-3" />
+                Block Watcher
+              </NavLink>
+            </li>
+            <li>
+              <NavLink 
+                to="/smart-contract-auditor" 
+                className={({ isActive }) => 
+                  `flex items-center px-3 py-2 rounded-md ${isActive ? 'bg-indigo-700' : 'hover:bg-gray-700'}`
+                }
+                onClick={handleNavClick}
+              >
+                <Code className="h-5 w-5 mr-3" />
+                Smart Contract Auditor
+              </NavLink>
+            </li>
           </ul>
         </div>
         
@@ -112,6 +158,18 @@ const Navbar: React.FC<NavbarProps> = ({ onNavItemClick, collapsed = false }) =>
               >
                 <FolderKanban className="h-5 w-5 mr-3" />
                 Case Manager
+              </NavLink>
+            </li>
+            <li>
+              <NavLink 
+                to="/tags" 
+                className={({ isActive }) => 
+                  `flex items-center px-3 py-2 rounded-md ${isActive ? 'bg-indigo-700' : 'hover:bg-gray-700'}`
+                }
+                onClick={handleNavClick}
+              >
+                <Tag className="h-5 w-5 mr-3" />
+                Tag Manager
               </NavLink>
             </li>
           </ul>
